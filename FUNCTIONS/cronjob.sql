@@ -29,7 +29,7 @@ END IF;
 
 SELECT CronJobID,  SchemaName,  FunctionName
 INTO  _CronJobID, _SchemaName, _FunctionName
-FROM CronJobs, pg_stat_activity
+FROM CronJobs
 WHERE CronJob_Function_Is_Valid(SchemaName, FunctionName)
 AND (CronJob_No_Waiting()         OR RunEvenIfOthersAreWaiting = TRUE)
 AND (LastSQLERRM       IS NULL    OR RetryOnError              = TRUE)
