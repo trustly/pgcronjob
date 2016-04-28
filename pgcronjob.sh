@@ -4,11 +4,11 @@ set -e
 set -u
 
 # Set these environmental variables to override them
-export PGHOST=${PGHOST-localhost}
-export PGPORT=${PGPORT-5432}
-export PGDATABASE=${PGDATABASE-$USER}
+export PGHOST=${PGHOST-}
+export PGPORT=${PGPORT-}
+export PGDATABASE=${PGDATABASE-}
 export PGUSER=${PGUSER-pgcronjob}
-export PGPASSWORD=${PGPASSWORD-my_password}
+export PGPASSWORD=${PGPASSWORD-}
 
 BATCHJOBSTATE="AGAIN"
 while [ "$BATCHJOBSTATE" = "AGAIN" ]; do
