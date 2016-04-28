@@ -22,6 +22,7 @@ _n_tup_upd         bigint;
 _n_tup_del         bigint;
 _n_tup_hot_upd     bigint;
 BEGIN
+PERFORM pg_sleep(1); -- to prevent flooding in case something would be calling us in an end-less loop without sleeps in between
 IF NOT pg_try_advisory_xact_lock('public.CronJob()'::regprocedure::int, 0) THEN
     RAISE NOTICE 'Aborting CronJob() because of a concurrent execution';
     RETURN 'DONE';
@@ -38,12 +39,12 @@ AND (RunAfterTimestamp IS NULL    OR now()                     > RunAfterTimesta
 AND (RunUntilTimestamp IS NULL    OR now()                     < RunUntilTimestamp)
 AND (RunAfterTime      IS NULL    OR now()::time               > RunAfterTime)
 AND (RunUntilTime      IS NULL    OR now()::time               < RunUntilTime)
-AND (RunInterval       IS NULL    OR now()+RunInterval         > LastRunStartedAt)
-AND (SleepInterval     IS NULL    OR now()+SleepInterval       > LastRunFinishedAt)
+AND (RunInterval       IS NULL    OR now()                     > LastRunStartedAt+RunInterval    OR FirstRunStartedAt  IS NULL)
+AND (SleepInterval     IS NULL    OR now()                     > LastRunFinishedAt+SleepInterval OR FirstRunFinishedAt IS NULL)
 ORDER BY LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
-    -- Tell our while-loop-caller-script to stop calling us until it is called by the OS cron the next minute:
-    RETURN 'DONE';
+    -- Tell our while-loop-caller-script to keep calling us. Hopefully there will be some work to do next time we are called.
+    RETURN 'AGAIN';
 END IF;
 
 UPDATE CronJobs SET
@@ -72,12 +73,14 @@ INTO STRICT
 FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
+    RAISE NOTICE 'Starting CronJob % %.%()', _CronJobID, _SchemaName, _FunctionName;
     EXECUTE format('SELECT %I.%I()',_SchemaName,_FunctionName) INTO STRICT _BatchJobState;
+    RAISE NOTICE 'Finished CronJob % %.%() -> %', _CronJobID, _SchemaName, _FunctionName, _BatchJobState;
     IF (_BatchJobState IN ('DONE','AGAIN')) IS NOT TRUE THEN
         RAISE EXCEPTION 'CronJob function %.%() did not return a valid BatchJobState: %', _SchemaName,_FunctionName, _BatchJobState;
     END IF;
 EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Error when executing CronJob %.%(): SQLSTATE % SQLERRM %', _SchemaName,_FunctionName, SQLSTATE, SQLERRM;
+    RAISE WARNING 'Error when executing CronJob %.%(): SQLSTATE % SQLERRM %', _SchemaName,_FunctionName, SQLSTATE, SQLERRM;
     _LastSQLSTATE := SQLSTATE;
     _LastSQLERRM  := SQLERRM;
 END;
