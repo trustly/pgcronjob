@@ -42,7 +42,7 @@ This example function is included as an example:
 
 Then all you have to do is to register the function to be run by pgcronjob:
 
-    # SELECT cron.Register('cron','function_template_skeleton');
+    # SELECT cron.Register('cron.function_template_skeleton()');
      register 
     -----------
             1
