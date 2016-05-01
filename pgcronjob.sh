@@ -12,6 +12,6 @@ export PGPASSWORD=${PGPASSWORD-}
 
 BATCHJOBSTATE="AGAIN"
 while [ "$BATCHJOBSTATE" = "AGAIN" ]; do
-    BATCHJOBSTATE=$(PGOPTIONS='--client-min-messages=error' psql -A -t -X -L pgcronjob.log -c "SELECT CronJob()")
+    BATCHJOBSTATE=$(PGOPTIONS='--client-min-messages=error' psql -A -t -X -L pgcronjob.log -c "SELECT cron.Run()")
     echo $BATCHJOBSTATE
 done

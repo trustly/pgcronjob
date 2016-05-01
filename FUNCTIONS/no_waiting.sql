@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.CronJob_No_Waiting()
+CREATE OR REPLACE FUNCTION cron.No_Waiting()
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE

@@ -1,13 +1,12 @@
-CREATE OR REPLACE FUNCTION public.CronJob()
+CREATE OR REPLACE FUNCTION cron.Run()
 RETURNS batchjobstate
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
 _OK                boolean;
-_CronJobID         integer;
-_SchemaName        text;
-_FunctionName      text;
+_JobID             integer;
+_Function          regprocedure;
 _BatchJobState     batchjobstate;
 _LastRunStartedAt  timestamptz;
 _LastRunFinishedAt timestamptz;
@@ -23,16 +22,16 @@ _n_tup_del         bigint;
 _n_tup_hot_upd     bigint;
 BEGIN
 PERFORM pg_sleep(1); -- to prevent flooding in case something would be calling us in an end-less loop without sleeps in between
-IF NOT pg_try_advisory_xact_lock('public.CronJob()'::regprocedure::int, 0) THEN
-    RAISE NOTICE 'Aborting CronJob() because of a concurrent execution';
+IF NOT pg_try_advisory_xact_lock('public.cron.Run()'::regprocedure::int, 0) THEN
+    RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
     RETURN 'DONE';
 END IF;
 
-SELECT CronJobID,  SchemaName,  FunctionName
-INTO  _CronJobID, _SchemaName, _FunctionName
-FROM CronJobs
-WHERE CronJob_Function_Is_Valid(SchemaName, FunctionName)
-AND (CronJob_No_Waiting()         OR RunEvenIfOthersAreWaiting = TRUE)
+SELECT JobID,  Function
+INTO  _JobID, _Function
+FROM cron.Jobs
+WHERE cron.Is_Valid_Function(Function)
+AND (cron.No_Waiting()            OR RunEvenIfOthersAreWaiting = TRUE)
 AND (LastSQLERRM       IS NULL    OR RetryOnError              = TRUE)
 AND (BatchJobState     IS NULL    OR BatchJobState             = 'AGAIN')
 AND (RunAfterTimestamp IS NULL    OR now()                     > RunAfterTimestamp)
@@ -47,10 +46,10 @@ IF NOT FOUND THEN
     RETURN 'AGAIN';
 END IF;
 
-UPDATE CronJobs SET
+UPDATE cron.Jobs SET
     FirstRunStartedAt = COALESCE(FirstRunStartedAt,clock_timestamp()),
     LastRunStartedAt  = clock_timestamp()
-WHERE CronJobID = _CronJobID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
+WHERE JobID = _JobID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
 
 SELECT
     COALESCE(SUM(seq_scan),0),
@@ -73,14 +72,14 @@ INTO STRICT
 FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
-    RAISE NOTICE 'Starting CronJob % %.%()', _CronJobID, _SchemaName, _FunctionName;
-    EXECUTE format('SELECT %I.%I()',_SchemaName,_FunctionName) INTO STRICT _BatchJobState;
-    RAISE NOTICE 'Finished CronJob % %.%() -> %', _CronJobID, _SchemaName, _FunctionName, _BatchJobState;
+    RAISE NOTICE 'Starting cron job % %', _JobID, _Function;
+    EXECUTE 'SELECT %' USING _Function INTO STRICT _BatchJobState;
+    RAISE NOTICE 'Finished cron job % % -> %', _JobID, _Function, _BatchJobState;
     IF (_BatchJobState IN ('DONE','AGAIN')) IS NOT TRUE THEN
-        RAISE EXCEPTION 'CronJob function %.%() did not return a valid BatchJobState: %', _SchemaName,_FunctionName, _BatchJobState;
+        RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, _BatchJobState;
     END IF;
 EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'Error when executing CronJob %.%(): SQLSTATE % SQLERRM %', _SchemaName,_FunctionName, SQLSTATE, SQLERRM;
+    RAISE WARNING 'Error when executing cron job %: SQLSTATE % SQLERRM %', _Function, SQLSTATE, SQLERRM;
     _LastSQLSTATE := SQLSTATE;
     _LastSQLERRM  := SQLERRM;
 END;
@@ -105,13 +104,13 @@ INTO STRICT
     _n_tup_hot_upd
 FROM pg_catalog.pg_stat_xact_user_tables;
 
-UPDATE CronJobs SET
+UPDATE cron.Jobs SET
     FirstRunFinishedAt = COALESCE(FirstRunFinishedAt,clock_timestamp()),
     LastRunFinishedAt  = clock_timestamp(),
     LastSQLSTATE       = _LastSQLSTATE,
     LastSQLERRM        = _LastSQLERRM,
     BatchJobState      = _BatchJobState
-WHERE CronJobID = _CronJobID
+WHERE JobID = _JobID
 RETURNING
     LastRunFinishedAt,
     LastSQLSTATE,
@@ -121,11 +120,11 @@ INTO STRICT
     _LastSQLSTATE,
     _LastSQLERRM;
 
-INSERT INTO CronJobLog ( CronJobID, StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
-VALUES                 (_CronJobID,      now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
+INSERT INTO cron.Log ( JobID, StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
+VALUES               (_JobID,      now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
 RETURNING TRUE INTO STRICT _OK;
 
--- Tell our while-loop-caller-script to continue calling us until there is no more PgCronJobs to execute:
+-- Tell our while-loop-caller-script to continue calling us until there is no more PgJobs to execute:
 RETURN 'AGAIN';
 END;
 $FUNC$;

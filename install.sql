@@ -1,21 +1,25 @@
 ROLLBACK;
 \set AUTOCOMMIT OFF
 BEGIN;
-\ir TYPES/batchjobstate.sql
-\ir TABLES/cronjobs.sql
-\ir TABLES/cronjoblog.sql
-\ir FUNCTIONS/cronjob_no_waiting.sql
-\ir FUNCTIONS/cronjob_function_is_valid.sql
-\ir FUNCTIONS/cronjob_register.sql
-\ir FUNCTIONS/cronjob_disable.sql
-\ir FUNCTIONS/cronjob_enable.sql
-\ir FUNCTIONS/cronjob.sql
-GRANT SELECT,UPDATE ON TABLE cronjobs TO pgcronjob;
-GRANT INSERT ON TABLE cronjoblog TO pgcronjob;
-GRANT USAGE ON SEQUENCE cronjoblog_cronjoblogid_seq TO pgcronjob;
+CREATE TYPE public.batchjobstate AS ENUM (
+    'AGAIN',
+    'DONE'
+);
+CREATE SCHEMA cron;
+\ir TABLES/jobs.sql
+\ir TABLES/log.sql
+\ir FUNCTIONS/no_waiting.sql
+\ir FUNCTIONS/is_valid_function.sql
+\ir FUNCTIONS/register.sql
+\ir FUNCTIONS/disable.sql
+\ir FUNCTIONS/enable.sql
+\ir FUNCTIONS/run.sql
+GRANT SELECT,UPDATE ON TABLE cron.Jobs TO pgcronjob;
+GRANT INSERT ON TABLE cron.Log TO pgcronjob;
+GRANT USAGE ON SEQUENCE cron.log_logid_seq TO pgcronjob;
 
 -- For testing only, remove these lines in production:
-\ir FUNCTIONS/cronjob_function_template_skeleton.sql
-SELECT CronJob_Register('public','cronjob_function_template_skeleton');
+\ir FUNCTIONS/function_template_skeleton.sql
+SELECT cron.Register('cron.function_template_skeleton()');
 
 COMMIT;
