@@ -20,6 +20,6 @@ GRANT USAGE ON SEQUENCE cron.log_logid_seq TO pgcronjob;
 
 -- For testing only, remove these lines in production:
 \ir FUNCTIONS/function_template_skeleton.sql
-SELECT cron.Register('cron.function_template_skeleton()');
+SELECT cron.Register('cron.Function_Template_Skeleton()');
 
 COMMIT;

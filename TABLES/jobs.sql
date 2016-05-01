@@ -23,3 +23,5 @@ PRIMARY KEY (JobID),
 UNIQUE(Function),
 CHECK(LastSQLSTATE ~ '^[0-9A-Z]{5}$')
 );
+
+ALTER TABLE cron.Jobs OWNER TO pgcronjob;

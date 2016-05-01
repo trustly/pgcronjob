@@ -47,3 +47,15 @@ RETURNING JobID INTO STRICT _JobID;
 RETURN _JobID;
 END;
 $FUNC$;
+
+ALTER FUNCTION cron.Register(
+_Function                   regprocedure,
+_RunEvenIfOthersAreWaiting  boolean,
+_RetryOnError               boolean,
+_RunAfterTimestamp          timestamptz,
+_RunUntilTimestamp          timestamptz,
+_RunAfterTime               time,
+_RunUntilTime               time,
+_RunInterval                interval,
+_SleepInterval              interval
+) OWNER TO pgcronjob;

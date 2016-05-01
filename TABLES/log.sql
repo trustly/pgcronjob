@@ -17,3 +17,5 @@ n_tup_hot_upd     bigint      NOT NULL, -- n_tup_hot_upd
 PRIMARY KEY (LogID),
 CHECK(LastSQLSTATE ~ '^[0-9A-Z]{5}$')
 );
+
+ALTER TABLE cron.Log OWNER TO pgcronjob;

@@ -24,3 +24,5 @@ AND EXISTS (
     )
 )
 $FUNC$;
+
+ALTER FUNCTION cron.Is_Valid_Function(_Function regprocedure) OWNER TO pgcronjob;

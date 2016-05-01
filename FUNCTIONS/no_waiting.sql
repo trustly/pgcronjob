@@ -14,3 +14,5 @@ ELSE
 END IF;
 END;
 $FUNC$;
+
+ALTER FUNCTION cron.No_Waiting() OWNER TO pgcronjob;

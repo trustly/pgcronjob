@@ -23,4 +23,6 @@ END IF;
 END;
 $FUNC$;
 
+ALTER FUNCTION cron.Function_Template_Skeleton() OWNER TO pgcronjob;
+
 GRANT EXECUTE ON FUNCTION cron.Function_Template_Skeleton() TO pgcronjob;

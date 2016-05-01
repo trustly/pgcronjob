@@ -36,3 +36,5 @@ END IF;
 RETURN _JobID;
 END;
 $FUNC$;
+
+ALTER FUNCTION cron.Enable(_Function regprocedure) OWNER TO pgcronjob;
