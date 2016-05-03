@@ -73,7 +73,7 @@ FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
     RAISE NOTICE 'Starting cron job % %', _JobID, _Function;
-    EXECUTE 'SELECT %' USING _Function INTO STRICT _BatchJobState;
+    EXECUTE format('SELECT %s', _Function) INTO STRICT _BatchJobState;
     RAISE NOTICE 'Finished cron job % % -> %', _JobID, _Function, _BatchJobState;
     IF (_BatchJobState IN ('DONE','AGAIN')) IS NOT TRUE THEN
         RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, _BatchJobState;
