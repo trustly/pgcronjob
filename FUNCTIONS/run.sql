@@ -22,7 +22,7 @@ _n_tup_del         bigint;
 _n_tup_hot_upd     bigint;
 BEGIN
 PERFORM pg_sleep(1); -- to prevent flooding in case something would be calling us in an end-less loop without sleeps in between
-IF NOT pg_try_advisory_xact_lock('public.cron.Run()'::regprocedure::int, 0) THEN
+IF NOT pg_try_advisory_xact_lock('cron.Run()'::regprocedure::int, 0) THEN
     RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
     RETURN 'DONE';
 END IF;
