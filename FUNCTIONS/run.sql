@@ -2,6 +2,7 @@ CREATE OR REPLACE FUNCTION cron.Run()
 RETURNS batchjobstate
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
+SECURITY DEFINER
 AS $FUNC$
 DECLARE
 _OK                boolean;
@@ -129,4 +130,11 @@ RETURN 'AGAIN';
 END;
 $FUNC$;
 
-ALTER FUNCTION cron.Run() OWNER TO pgcronjob;
+ALTER FUNCTION cron.Run() OWNER TO gluepay;
+
+SET search_path TO 'public', pg_catalog;
+
+REVOKE ALL ON FUNCTION cron.Run() FROM PUBLIC;
+REVOKE ALL ON FUNCTION cron.Run() FROM gluepay;
+GRANT  ALL ON FUNCTION cron.Run() TO gluepay;
+GRANT  ALL ON FUNCTION cron.Run() TO pgcron;
