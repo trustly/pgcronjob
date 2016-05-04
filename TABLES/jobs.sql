@@ -10,8 +10,8 @@ RunAfterTimestamp         timestamptz,
 RunUntilTimestamp         timestamptz,
 RunAfterTime              time,
 RunUntilTime              time,
-RunInterval               interval, -- time to sleep after StartedAt
-SleepInterval             interval, -- time to sleep after FinishedAt
+IntervalAGAIN             interval, -- time to sleep between each db txn commit to spread the load
+IntervalDONE              interval, -- time to sleep after a cron job has completed and has no more work to do for now
 FirstRunStartedAt         timestamptz,
 FirstRunFinishedAt        timestamptz,
 LastRunStartedAt          timestamptz,

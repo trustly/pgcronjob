@@ -69,8 +69,8 @@ then such special settings can easily be defined when registering the function:
         _RunUntilTimestamp          := '2016-05-28 04:00:00+01',
         _RunAfterTime               := '03:00:00',
         _RunUntilTime               := '04:00:00',
-        _RunInterval                := '1 hour',
-        _SleepInterval              := '30 minutes'
+        _IntervalAGAIN              := '1 second',
+        _IntervalDONE               := '30 minutes'
     );
 
 None, some, or all of the settings can be specificed when registering the function.
@@ -114,8 +114,8 @@ Can be NULL (which means setting is ignored):
 - RunUntilTimestamp timestamptz: Run only until the specified timestamp.
 - RunAfterTime time: Run only after the specified time of the day.
 - RunBeforeTime time: Run only until the specified time of the day.
-- RunInterval interval: Run only after having slept for this interval after the last run started.
-- SleepInterval interval: Run only after having slept for this interval after the last run finished.
+- IntervalAGAIN interval: Time to sleep between each db txn commit to spread the load.
+- IntervalDONE interval: Time to sleep after a cron job has completed and has no more work to do for now.
 
 ## Logging
 

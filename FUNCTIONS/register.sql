@@ -6,8 +6,8 @@ _RunAfterTimestamp          timestamptz DEFAULT NULL,
 _RunUntilTimestamp          timestamptz DEFAULT NULL,
 _RunAfterTime               time        DEFAULT NULL,
 _RunUntilTime               time        DEFAULT NULL,
-_RunInterval                interval    DEFAULT NULL,
-_SleepInterval              interval    DEFAULT NULL
+_IntervalAGAIN              interval    DEFAULT NULL,
+_IntervalDONE               interval    DEFAULT NULL
 )
 RETURNS integer
 LANGUAGE plpgsql
@@ -24,8 +24,8 @@ END IF;
 
 SELECT
     JobID,
-    ROW( RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, RunInterval, SleepInterval) IS NOT DISTINCT FROM
-    ROW(_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_RunInterval,_SleepInterval)
+    ROW( RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
+    ROW(_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 INTO
     _JobID,
     _IdenticalConfiguration
@@ -40,8 +40,8 @@ IF FOUND THEN
     END IF;
 END IF;
 
-INSERT INTO cron.Jobs ( Function,  RunEvenIfOthersAreWaiting,  RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, RunInterval, SleepInterval)
-VALUES                (_Function, _RunEvenIfOthersAreWaiting, _RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_RunInterval,_SleepInterval)
+INSERT INTO cron.Jobs ( Function,  RunEvenIfOthersAreWaiting,  RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
+VALUES                (_Function, _RunEvenIfOthersAreWaiting, _RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 RETURNING JobID INTO STRICT _JobID;
 
 RETURN _JobID;
@@ -56,6 +56,6 @@ _RunAfterTimestamp          timestamptz,
 _RunUntilTimestamp          timestamptz,
 _RunAfterTime               time,
 _RunUntilTime               time,
-_RunInterval                interval,
-_SleepInterval              interval
+_IntervalAGAIN              interval,
+_IntervalDONE               interval
 ) OWNER TO pgcronjob;

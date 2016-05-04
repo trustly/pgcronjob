@@ -25,7 +25,6 @@ IF NOT pg_try_advisory_xact_lock('cron.Run()'::regprocedure::int, 0) THEN
     RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
     RETURN 'DONE';
 END IF;
-PERFORM pg_sleep(1); -- to prevent flooding in case something would be calling us in an end-less loop without sleeps in between
 
 SELECT JobID,  Function
 INTO  _JobID, _Function
@@ -33,13 +32,12 @@ FROM cron.Jobs
 WHERE cron.Is_Valid_Function(Function)
 AND (cron.No_Waiting()            OR RunEvenIfOthersAreWaiting = TRUE)
 AND (LastSQLERRM       IS NULL    OR RetryOnError              = TRUE)
-AND (BatchJobState     IS NULL    OR BatchJobState             = 'AGAIN')
 AND (RunAfterTimestamp IS NULL    OR now()                     > RunAfterTimestamp)
 AND (RunUntilTimestamp IS NULL    OR now()                     < RunUntilTimestamp)
 AND (RunAfterTime      IS NULL    OR now()::time               > RunAfterTime)
 AND (RunUntilTime      IS NULL    OR now()::time               < RunUntilTime)
-AND (RunInterval       IS NULL    OR now()                     > LastRunStartedAt+RunInterval    OR FirstRunStartedAt  IS NULL)
-AND (SleepInterval     IS NULL    OR now()                     > LastRunFinishedAt+SleepInterval OR FirstRunFinishedAt IS NULL)
+AND (BatchJobState     IS NULL    OR now()                     > LastRunFinishedAt+IntervalDONE  OR BatchJobState = 'AGAIN')
+AND (IntervalAGAIN     IS NULL    OR now()                     > LastRunFinishedAt+IntervalAGAIN OR FirstRunFinishedAt IS NULL)
 ORDER BY LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
     -- Tell our while-loop-caller-script to keep calling us. Hopefully there will be some work to do next time we are called.
