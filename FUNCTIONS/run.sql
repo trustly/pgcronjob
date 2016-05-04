@@ -23,7 +23,7 @@ _n_tup_hot_upd     bigint;
 BEGIN
 IF NOT pg_try_advisory_xact_lock('cron.Run()'::regprocedure::int, 0) THEN
     RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
-    RETURN 'DONE';
+    RETURN NULL;
 END IF;
 SELECT JobID,  Function
 INTO  _JobID, _Function
@@ -39,9 +39,9 @@ AND (BatchJobState     IS NULL    OR now()                     > LastRunFinished
 AND (IntervalAGAIN     IS NULL    OR now()                     > LastRunFinishedAt+IntervalAGAIN OR FirstRunFinishedAt IS NULL)
 ORDER BY LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
-    -- Tell our while-loop-caller-script to keep calling us. Hopefully there will be some work to do next time we are called.
-    PERFORM pg_sleep(1);
-    RETURN 'AGAIN';
+    -- Tell our while-loop-caller-script we're done, no more work
+    -- It will keep calling us again after having slept for a second.
+    RETURN 'DONE';
 END IF;
 
 UPDATE cron.Jobs SET
