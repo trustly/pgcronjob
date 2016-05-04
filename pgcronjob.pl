@@ -15,7 +15,7 @@ my $run = $dbh->prepare("SELECT cron.Run()");
 while (1) {
     $run->execute();
     my ($batchjobstate) = $run->fetchrow_array();
-    print "$batchjobstate\n";
+    exit unless defined $batchjobstate; # cron.Run() returns NULL if there is a concurrent execution
     if ($batchjobstate eq 'AGAIN') {
         next; # call cron.Run() again immediately since there is more work to do
     } elsif ($batchjobstate eq 'DONE') {
