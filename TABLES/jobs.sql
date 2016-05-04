@@ -1,6 +1,7 @@
 CREATE TABLE cron.Jobs (
 JobID                     serial       NOT NULL,
 Function                  regprocedure NOT NULL,
+Fork                      boolean      NOT NULL DEFAULT FALSE,
 Enabled                   boolean      NOT NULL DEFAULT TRUE,
 RunEvenIfOthersAreWaiting boolean      NOT NULL DEFAULT FALSE,
 RetryOnError              boolean      NOT NULL DEFAULT FALSE,
@@ -19,6 +20,8 @@ LastRunFinishedAt         timestamptz,
 BatchJobState             batchjobstate,
 LastSQLSTATE              text,
 LastSQLERRM               text,
+PgCrobJobPID              integer,
+PgBackendPID              integer,
 PRIMARY KEY (JobID),
 UNIQUE(Function),
 CHECK(LastSQLSTATE ~ '^[0-9A-Z]{5}$')

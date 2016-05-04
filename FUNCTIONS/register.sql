@@ -1,5 +1,6 @@
 CREATE OR REPLACE FUNCTION cron.Register(
 _Function                   regprocedure,
+_Fork                       boolean     DEFAULT FALSE,
 _RunEvenIfOthersAreWaiting  boolean     DEFAULT FALSE,
 _RetryOnError               boolean     DEFAULT FALSE,
 _RunAfterTimestamp          timestamptz DEFAULT NULL,
@@ -24,8 +25,8 @@ END IF;
 
 SELECT
     JobID,
-    ROW( RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
-    ROW(_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+    ROW( Fork, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
+    ROW(_Fork,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 INTO
     _JobID,
     _IdenticalConfiguration
@@ -40,8 +41,8 @@ IF FOUND THEN
     END IF;
 END IF;
 
-INSERT INTO cron.Jobs ( Function,  RunEvenIfOthersAreWaiting,  RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
-VALUES                (_Function, _RunEvenIfOthersAreWaiting, _RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+INSERT INTO cron.Jobs ( Function, Fork, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
+VALUES                (_Function,_Fork,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 RETURNING JobID INTO STRICT _JobID;
 
 RETURN _JobID;
@@ -50,6 +51,7 @@ $FUNC$;
 
 ALTER FUNCTION cron.Register(
 _Function                   regprocedure,
+_Fork                       boolean,
 _RunEvenIfOthersAreWaiting  boolean,
 _RetryOnError               boolean,
 _RunAfterTimestamp          timestamptz,

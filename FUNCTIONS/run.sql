@@ -1,12 +1,14 @@
-CREATE OR REPLACE FUNCTION cron.Run()
-RETURNS batchjobstate
+CREATE OR REPLACE FUNCTION cron.Run(OUT CronRunState batchjobstate, OUT ForkJobID integer, _PgCrobJobPID integer, _ForkedJobID integer DEFAULT NULL)
+RETURNS RECORD
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
 _OK                boolean;
 _JobID             integer;
+_PgBackendPID      integer;
 _Function          regprocedure;
+_Fork              boolean;
 _BatchJobState     batchjobstate;
 _LastRunStartedAt  timestamptz;
 _LastRunFinishedAt timestamptz;
@@ -21,12 +23,18 @@ _n_tup_upd         bigint;
 _n_tup_del         bigint;
 _n_tup_hot_upd     bigint;
 BEGIN
-IF NOT pg_try_advisory_xact_lock('cron.Run()'::regprocedure::int, 0) THEN
-    RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
-    RETURN NULL;
+
+IF _ForkedJobID IS NULL THEN
+    IF NOT pg_try_advisory_xact_lock('cron.Run(integer,integer)'::regprocedure::int, 0) THEN
+        RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
+        CronRunState := NULL;
+        ForkJobID    := NULL;
+        RETURN;
+    END IF;
 END IF;
-SELECT JobID,  Function
-INTO  _JobID, _Function
+
+SELECT JobID,  Function,  Fork
+INTO  _JobID, _Function, _Fork
 FROM cron.Jobs
 WHERE cron.Is_Valid_Function(Function)
 AND (cron.No_Waiting()            OR RunEvenIfOthersAreWaiting = TRUE)
@@ -37,16 +45,30 @@ AND (RunAfterTime      IS NULL    OR now()::time               > RunAfterTime)
 AND (RunUntilTime      IS NULL    OR now()::time               < RunUntilTime)
 AND (BatchJobState     IS NULL    OR now()                     > LastRunFinishedAt+IntervalDONE  OR BatchJobState = 'AGAIN')
 AND (IntervalAGAIN     IS NULL    OR now()                     > LastRunFinishedAt+IntervalAGAIN OR FirstRunFinishedAt IS NULL)
+AND PgCrobJobPID       IS NULL    OR PgCrobJobPID              = _PgCrobJobPID
+AND JobID = COALESCE(_ForkedJobID,JobID)
 ORDER BY LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
     -- Tell our while-loop-caller-script we're done, no more work
     -- It will keep calling us again after having slept for a second.
-    RETURN 'DONE';
+    CronRunState := 'DONE';
+    ForkJobID    := NULL;
+    RETURN;
 END IF;
+
+IF _Fork AND _ForkedJobID IS NULL THEN
+    CronRunState := 'AGAIN';
+    ForkJobID    := _JobID;
+    RETURN;
+END IF;
+
+_PgBackendPID := pg_backend_pid();
 
 UPDATE cron.Jobs SET
     FirstRunStartedAt = COALESCE(FirstRunStartedAt,clock_timestamp()),
-    LastRunStartedAt  = clock_timestamp()
+    LastRunStartedAt  = clock_timestamp(),
+    PgCrobJobPID      = _PgCrobJobPID,
+    PgBackendPID      = _PgBackendPID
 WHERE JobID = _JobID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
 
 SELECT
@@ -118,13 +140,15 @@ INTO STRICT
     _LastSQLSTATE,
     _LastSQLERRM;
 
-INSERT INTO cron.Log ( JobID, StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
-VALUES               (_JobID,      now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
+INSERT INTO cron.Log ( JobID, PgCrobJobPID, PgBackendPID,StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
+VALUES               (_JobID,_PgCrobJobPID,_PgBackendPID,     now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
 RETURNING TRUE INTO STRICT _OK;
 
 -- Tell our while-loop-caller-script to continue calling us until there is no more PgJobs to execute:
-RETURN 'AGAIN';
+CronRunState := 'AGAIN';
+ForkJobID    := NULL;
+RETURN;
 END;
 $FUNC$;
 
-ALTER FUNCTION cron.Run() OWNER TO pgcronjob;
+ALTER FUNCTION cron.Run(_PgCrobJobPID integer, _ForkedJobID integer) OWNER TO pgcronjob;
