@@ -25,7 +25,6 @@ IF NOT pg_try_advisory_xact_lock('cron.Run()'::regprocedure::int, 0) THEN
     RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
     RETURN 'DONE';
 END IF;
-
 SELECT JobID,  Function
 INTO  _JobID, _Function
 FROM cron.Jobs
@@ -41,6 +40,7 @@ AND (IntervalAGAIN     IS NULL    OR now()                     > LastRunFinished
 ORDER BY LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
     -- Tell our while-loop-caller-script to keep calling us. Hopefully there will be some work to do next time we are called.
+    PERFORM pg_sleep(1);
     RETURN 'AGAIN';
 END IF;
 
