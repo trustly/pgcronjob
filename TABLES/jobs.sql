@@ -16,7 +16,6 @@ IntervalAGAIN             interval, -- time to sleep between each db txn commit 
 IntervalDONE              interval, -- time to sleep after a cron job has completed and has no more work to do for now
 PRIMARY KEY (JobID),
 UNIQUE(Function),
-CHECK(LastSQLSTATE ~ '^[0-9A-Z]{5}$'),
 CHECK(Processes > 0)
 );
 

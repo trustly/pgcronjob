@@ -8,7 +8,7 @@ LastRunFinishedAt         timestamptz,
 BatchJobState             batchjobstate,
 LastSQLSTATE              text,
 LastSQLERRM               text,
-PgCrobJobPID              integer,
+PgCronJobPID              integer,
 PgBackendPID              integer,
 PRIMARY KEY (ProcessID),
 CHECK(LastSQLSTATE ~ '^[0-9A-Z]{5}$')

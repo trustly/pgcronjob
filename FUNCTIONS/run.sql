@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION cron.Run(OUT CronRunState batchjobstate, OUT ForkJobID integer, _PgCrobJobPID integer, _ForkedJobID integer DEFAULT NULL)
+CREATE OR REPLACE FUNCTION cron.Run(OUT CronRunState batchjobstate, OUT ForkProcessID integer, _PgCronJobPID integer, _ForkedProcessID integer DEFAULT NULL)
 RETURNS RECORD
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
@@ -6,6 +6,7 @@ AS $FUNC$
 DECLARE
 _OK                boolean;
 _JobID             integer;
+_ProcessID         integer;
 _PgBackendPID      integer;
 _Function          regprocedure;
 _Fork              boolean;
@@ -24,52 +25,61 @@ _n_tup_del         bigint;
 _n_tup_hot_upd     bigint;
 BEGIN
 
-IF _ForkedJobID IS NULL THEN
+IF _ForkedProcessID IS NULL THEN
     IF NOT pg_try_advisory_xact_lock('cron.Run(integer,integer)'::regprocedure::int, 0) THEN
         RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
         CronRunState := NULL;
-        ForkJobID    := NULL;
+        ForkProcessID    := NULL;
         RETURN;
     END IF;
 END IF;
 
-SELECT JobID,  Function,  Fork
-INTO  _JobID, _Function, _Fork
-FROM cron.Jobs
+SELECT
+    J.JobID,
+    J.Function,
+    J.Fork,
+    P.ProcessID
+INTO
+    _JobID,
+    _Function,
+    _Fork,
+    _ProcessID
+FROM cron.Jobs AS J
+INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE cron.Is_Valid_Function(Function)
-AND (cron.No_Waiting()            OR RunEvenIfOthersAreWaiting = TRUE)
-AND (LastSQLERRM       IS NULL    OR RetryOnError              = TRUE)
-AND (RunAfterTimestamp IS NULL    OR now()                     > RunAfterTimestamp)
-AND (RunUntilTimestamp IS NULL    OR now()                     < RunUntilTimestamp)
-AND (RunAfterTime      IS NULL    OR now()::time               > RunAfterTime)
-AND (RunUntilTime      IS NULL    OR now()::time               < RunUntilTime)
-AND (BatchJobState     IS NULL    OR now()                     > LastRunFinishedAt+IntervalDONE  OR BatchJobState = 'AGAIN')
-AND (IntervalAGAIN     IS NULL    OR now()                     > LastRunFinishedAt+IntervalAGAIN OR FirstRunFinishedAt IS NULL)
-AND PgCrobJobPID       IS NULL    OR PgCrobJobPID              = _PgCrobJobPID
-AND JobID = COALESCE(_ForkedJobID,JobID)
-ORDER BY LastRunStartedAt ASC NULLS FIRST;
+AND (cron.No_Waiting()               OR J.RunEvenIfOthersAreWaiting = TRUE)
+AND (P.LastSQLERRM        IS NULL    OR J.RetryOnError              = TRUE)
+AND (J.RunAfterTimestamp  IS NULL    OR now()                       > J.RunAfterTimestamp)
+AND (J.RunUntilTimestamp  IS NULL    OR now()                       < J.RunUntilTimestamp)
+AND (J.RunAfterTime       IS NULL    OR now()::time                 > J.RunAfterTime)
+AND (J.RunUntilTime       IS NULL    OR now()::time                 < J.RunUntilTime)
+AND (P.BatchJobState      IS NULL    OR now()                       > P.LastRunFinishedAt+J.IntervalDONE  OR P.BatchJobState = 'AGAIN')
+AND (J.IntervalAGAIN      IS NULL    OR now()                       > P.LastRunFinishedAt+J.IntervalAGAIN OR P.FirstRunFinishedAt IS NULL)
+AND (P.PgCronJobPID       IS NULL    OR P.PgCronJobPID              = _PgCronJobPID)
+AND P.ProcessID = COALESCE(_ForkedProcessID,P.ProcessID)
+ORDER BY P.LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
     -- Tell our while-loop-caller-script we're done, no more work
     -- It will keep calling us again after having slept for a second.
     CronRunState := 'DONE';
-    ForkJobID    := NULL;
+    ForkProcessID    := NULL;
     RETURN;
 END IF;
 
-IF _Fork AND _ForkedJobID IS NULL THEN
-    CronRunState := 'AGAIN';
-    ForkJobID    := _JobID;
+IF _Fork AND _ForkedProcessID IS NULL THEN
+    CronRunState  := 'AGAIN';
+    ForkProcessID := _ProcessID;
     RETURN;
 END IF;
 
 _PgBackendPID := pg_backend_pid();
 
-UPDATE cron.Jobs SET
+UPDATE cron.Processes SET
     FirstRunStartedAt = COALESCE(FirstRunStartedAt,clock_timestamp()),
     LastRunStartedAt  = clock_timestamp(),
-    PgCrobJobPID      = _PgCrobJobPID,
+    PgCronJobPID      = _PgCronJobPID,
     PgBackendPID      = _PgBackendPID
-WHERE JobID = _JobID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
+WHERE ProcessID = _ProcessID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
 
 SELECT
     COALESCE(SUM(seq_scan),0),
@@ -124,13 +134,13 @@ INTO STRICT
     _n_tup_hot_upd
 FROM pg_catalog.pg_stat_xact_user_tables;
 
-UPDATE cron.Jobs SET
+UPDATE cron.Processes SET
     FirstRunFinishedAt = COALESCE(FirstRunFinishedAt,clock_timestamp()),
     LastRunFinishedAt  = clock_timestamp(),
     LastSQLSTATE       = _LastSQLSTATE,
     LastSQLERRM        = _LastSQLERRM,
     BatchJobState      = _BatchJobState
-WHERE JobID = _JobID
+WHERE ProcessID = _ProcessID
 RETURNING
     LastRunFinishedAt,
     LastSQLSTATE,
@@ -140,15 +150,15 @@ INTO STRICT
     _LastSQLSTATE,
     _LastSQLERRM;
 
-INSERT INTO cron.Log ( JobID, PgCrobJobPID, PgBackendPID,StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
-VALUES               (_JobID,_PgCrobJobPID,_PgBackendPID,     now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
+INSERT INTO cron.Log ( JobID, PgCronJobPID, PgBackendPID,StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
+VALUES               (_JobID,_PgCronJobPID,_PgBackendPID,     now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
 RETURNING TRUE INTO STRICT _OK;
 
 -- Tell our while-loop-caller-script to continue calling us until there is no more PgJobs to execute:
 CronRunState := 'AGAIN';
-ForkJobID    := NULL;
+ForkProcessID    := NULL;
 RETURN;
 END;
 $FUNC$;
 
-ALTER FUNCTION cron.Run(_PgCrobJobPID integer, _ForkedJobID integer) OWNER TO pgcronjob;
+ALTER FUNCTION cron.Run(_PgCronJobPID integer, _ForkedProcessID integer) OWNER TO pgcronjob;

@@ -22,5 +22,5 @@ GRANT INSERT ON TABLE cron.Log TO pgcronjob;
 GRANT USAGE ON SEQUENCE cron.log_logid_seq TO pgcronjob;
 -- For testing only, remove these lines in production:
 \ir FUNCTIONS/function_template_skeleton.sql
-SELECT cron.Register('cron.Function_Template_Skeleton()', _IntervalAGAIN := '1 second', _IntervalDONE := '3 seconds', _RetryOnError := TRUE,  _Fork := TRUE);
+SELECT cron.Register('cron.Function_Template_Skeleton()', _IntervalAGAIN := '1 second', _IntervalDONE := '3 seconds', _RetryOnError := TRUE,  _Fork := TRUE, _Processes := 2);
 COMMIT;

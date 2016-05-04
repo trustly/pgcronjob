@@ -26,8 +26,8 @@ END IF;
 
 SELECT
     JobID,
-    ROW( Fork, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
-    ROW(_Fork,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+    ROW( Fork, Processes, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
+    ROW(_Fork,_Processes,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 INTO
     _JobID,
     _IdenticalConfiguration
@@ -42,9 +42,11 @@ IF FOUND THEN
     END IF;
 END IF;
 
-INSERT INTO cron.Jobs ( Function, Fork, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
-VALUES                (_Function,_Fork,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+INSERT INTO cron.Jobs ( Function, Fork, Processes, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
+VALUES                (_Function,_Fork,_Processes,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 RETURNING JobID INTO STRICT _JobID;
+
+INSERT INTO cron.Processes (JobID) SELECT _JobID FROM generate_series(1,_Processes);
 
 RETURN _JobID;
 END;

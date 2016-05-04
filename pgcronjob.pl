@@ -13,31 +13,31 @@ my @connect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintEr
 my $dbh = DBI->connect(@connect) or die "Unable to connect";
 my $dbh_child;
 
-my $forkedjobid;
-my $run = $dbh->prepare('SELECT CronRunState, ForkJobID FROM cron.Run(_PgCrobJobPID := ?)');
-my $set_child_pid = $dbh->prepare('SELECT cron.Set_Child_PID(_PgCrobJobPID := ?, _ForkedJobID := ?)');
+my $forkedprocessid;
+my $run = $dbh->prepare('SELECT CronRunState, ForkProcessID FROM cron.Run(_PgCronJobPID := ?)');
+my $set_child_pid = $dbh->prepare('SELECT cron.Set_Child_PID(_PgCronJobPID := ?, _ForkedProcessID := ?)');
 my $run_child;
 
 my $parent_pid = $$;
 
 while (1) {
-    my ($batchjobstate, $forkjobid);
-    if (defined $forkedjobid) {
-        $run_child->execute($$,$forkedjobid);
-        ($batchjobstate, $forkjobid) = $run_child->fetchrow_array();
+    my ($batchjobstate, $forkprocessid);
+    if (defined $forkedprocessid) {
+        $run_child->execute($$,$forkedprocessid);
+        ($batchjobstate, $forkprocessid) = $run_child->fetchrow_array();
     } else {
         $run->execute($$);
-        ($batchjobstate, $forkjobid) = $run->fetchrow_array();
+        ($batchjobstate, $forkprocessid) = $run->fetchrow_array();
     }
-    if ($forkjobid) {
+    if ($forkprocessid) {
         my $child_pid = fork();
         if ($child_pid) {
-            $set_child_pid->execute($child_pid, $forkjobid);
+            $set_child_pid->execute($child_pid, $forkprocessid);
         } else {
             $dbh = undef;
             $dbh_child = DBI->connect(@connect) or die "Unable to connect";
-            $run_child = $dbh_child->prepare('SELECT CronRunState, ForkJobID FROM cron.Run(_PgCrobJobPID := ?, _ForkedJobID := ?)');
-            $forkedjobid = $forkjobid;
+            $run_child = $dbh_child->prepare('SELECT CronRunState, ForkProcessID FROM cron.Run(_PgCronJobPID := ?, _ForkedProcessID := ?)');
+            $forkedprocessid = $forkprocessid;
         }
     }
     exit unless defined $batchjobstate; # cron.Run() returns NULL if there is a concurrent execution
