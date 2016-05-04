@@ -7,6 +7,7 @@ CREATE TYPE public.batchjobstate AS ENUM (
 );
 CREATE SCHEMA cron;
 \ir TABLES/jobs.sql
+\ir TABLES/processes.sql
 \ir TABLES/log.sql
 \ir FUNCTIONS/no_waiting.sql
 \ir FUNCTIONS/is_valid_function.sql

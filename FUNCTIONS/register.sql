@@ -1,6 +1,7 @@
 CREATE OR REPLACE FUNCTION cron.Register(
 _Function                   regprocedure,
 _Fork                       boolean     DEFAULT FALSE,
+_Processes                  integer     DEFAULT 1,
 _RunEvenIfOthersAreWaiting  boolean     DEFAULT FALSE,
 _RetryOnError               boolean     DEFAULT FALSE,
 _RunAfterTimestamp          timestamptz DEFAULT NULL,
@@ -52,6 +53,7 @@ $FUNC$;
 ALTER FUNCTION cron.Register(
 _Function                   regprocedure,
 _Fork                       boolean,
+_Processes                  integer,
 _RunEvenIfOthersAreWaiting  boolean,
 _RetryOnError               boolean,
 _RunAfterTimestamp          timestamptz,
