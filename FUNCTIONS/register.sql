@@ -46,6 +46,9 @@ INSERT INTO cron.Jobs ( Function, Fork, Processes, RunEvenIfOthersAreWaiting, Re
 VALUES                (_Function,_Fork,_Processes,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 RETURNING JobID INTO STRICT _JobID;
 
+IF _Processes > 1 AND NOT _Fork THEN
+    RAISE EXCEPTION 'Multiple processes not possible if not _Fork := TRUE';
+END IF;
 INSERT INTO cron.Processes (JobID) SELECT _JobID FROM generate_series(1,_Processes);
 
 RETURN _JobID;

@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION cron.Function_Template_Skeleton()
+CREATE OR REPLACE FUNCTION cron.Function_Template_Skeleton(_ProcessID integer)
 RETURNS batchjobstate
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
@@ -23,6 +23,6 @@ END IF;
 END;
 $FUNC$;
 
-ALTER FUNCTION cron.Function_Template_Skeleton() OWNER TO pgcronjob;
+ALTER FUNCTION cron.Function_Template_Skeleton(_ProcessID integer) OWNER TO pgcronjob;
 
-GRANT EXECUTE ON FUNCTION cron.Function_Template_Skeleton() TO pgcronjob;
+GRANT EXECUTE ON FUNCTION cron.Function_Template_Skeleton(_ProcessID integer) TO pgcronjob;

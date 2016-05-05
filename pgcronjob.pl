@@ -4,48 +4,50 @@ use warnings;
 
 use DBI;
 use DBD::Pg;
+use Data::Dumper;
 
 $| = 1;
 
-$SIG{HUP} = "IGNORE";
+my @connect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintError => 0, AutoCommit => 1});
 
-my @connect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintError => 0, AutoCommit => 1, AutoInactiveDestroy => 1});
-my $dbh = DBI->connect(@connect) or die "Unable to connect";
-my $dbh_child;
+sub SQL_Run {
+    my $ProcessID = shift;
+    die "Invalid ProcessID: $ProcessID" unless $ProcessID =~ m/^\d+$/;
+    return "SELECT BatchJobState, NewProcessID FROM cron.Run(_ProcessID := $ProcessID)";
+}
 
-my $forkedprocessid;
-my $run = $dbh->prepare('SELECT CronRunState, ForkProcessID FROM cron.Run(_PgCronJobPID := ?)');
-my $set_child_pid = $dbh->prepare('SELECT cron.Set_Child_PID(_PgCronJobPID := ?, _ForkedProcessID := ?)');
-my $run_child;
-
-my $parent_pid = $$;
+my $Processes = {};
+$Processes->{0}->{DatabaseHandle} = DBI->connect(@connect) or die "Unable to connect";
+$Processes->{0}->{Run} = $Processes->{0}->{DatabaseHandle}->prepare(SQL_Run(0), {pg_async => PG_ASYNC});
+$Processes->{0}->{ExecutionTime} = time;
 
 while (1) {
-    my ($batchjobstate, $forkprocessid);
-    if (defined $forkedprocessid) {
-        $run_child->execute($$,$forkedprocessid);
-        ($batchjobstate, $forkprocessid) = $run_child->fetchrow_array();
-    } else {
-        $run->execute($$);
-        ($batchjobstate, $forkprocessid) = $run->fetchrow_array();
-    }
-    if ($forkprocessid) {
-        my $child_pid = fork();
-        if ($child_pid) {
-            $set_child_pid->execute($child_pid, $forkprocessid);
-        } else {
-            $dbh = undef;
-            $dbh_child = DBI->connect(@connect) or die "Unable to connect";
-            $run_child = $dbh_child->prepare('SELECT CronRunState, ForkProcessID FROM cron.Run(_PgCronJobPID := ?, _ForkedProcessID := ?)');
-            $forkedprocessid = $forkprocessid;
+    foreach my $ProcessID (sort keys %{$Processes}) {
+        if ($Processes->{$ProcessID}->{ExecutionTime}) {
+            next if $Processes->{$ProcessID}->{ExecutionTime} > time;
+            $Processes->{$ProcessID}->{Run}->execute();
+            delete $Processes->{$ProcessID}->{ExecutionTime};
         }
-    }
-    exit unless defined $batchjobstate; # cron.Run() returns NULL if there is a concurrent execution
-    if ($batchjobstate eq 'AGAIN') {
-        next; # call cron.Run() again immediately since there is more work to do
-    } elsif ($batchjobstate eq 'DONE') {
-        sleep(1); # no work to do, we're done, sleep 1 second to avoid flooding
-    } else {
-        die "cron.Run() returned an invalid batchjobstate: $batchjobstate";
+        if ($Processes->{$ProcessID}->{Run}->pg_ready) {
+            my $rows = $Processes->{$ProcessID}->{Run}->pg_result;
+            die "Unexpected number of rows: $rows" unless $rows == 1;
+            my ($BatchJobState, $NewProcessID) = $Processes->{$ProcessID}->{Run}->fetchrow_array();
+            if ($NewProcessID) {
+                die "ProcessID $NewProcessID already exists" if exists $Processes->{$NewProcessID};
+                $Processes->{$NewProcessID}->{DatabaseHandle} = DBI->connect(@connect) or die "Unable to connect";
+                $Processes->{$NewProcessID}->{Run} = $Processes->{$NewProcessID}->{DatabaseHandle}->prepare(SQL_Run($NewProcessID), {pg_async => PG_ASYNC});
+                $Processes->{$NewProcessID}->{Run}->execute();
+            }
+            exit unless defined $BatchJobState; # cron.Run() returns NULL if there is a concurrent execution
+            if ($BatchJobState eq 'AGAIN') {
+                # call cron.Run() again immediately since there is more work to do
+                $Processes->{$ProcessID}->{ExecutionTime} = time;
+            } elsif ($BatchJobState eq 'DONE') {
+                # no work to do, we're done, sleep 1 second to avoid flooding
+                $Processes->{$ProcessID}->{ExecutionTime} = time+1;
+            } else {
+                die "cron.Run() returned an invalid batchjobstate: $BatchJobState";
+            }
+        }
     }
 }

@@ -1,7 +1,6 @@
 CREATE TABLE cron.Log (
 LogID             serial      NOT NULL,
 JobID             integer     NOT NULL REFERENCES cron.Jobs(JobID),
-PgCronJobPID      integer     NOT NULL,
 PgBackendPID      integer     NOT NULL,
 StartTxnAt        timestamptz NOT NULL,
 StartedAt         timestamptz NOT NULL,
