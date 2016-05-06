@@ -38,7 +38,6 @@ while (1) {
                 $Processes->{$NewProcessID}->{Run} = $Processes->{$NewProcessID}->{DatabaseHandle}->prepare(SQL_Run($NewProcessID), {pg_async => PG_ASYNC});
                 $Processes->{$NewProcessID}->{Run}->execute();
             }
-            exit unless defined $BatchJobState; # cron.Run() returns NULL if there is a concurrent execution
             if ($BatchJobState eq 'AGAIN') {
                 # call cron.Run() again immediately since there is more work to do
                 $Processes->{$ProcessID}->{ExecutionTime} = time;

@@ -1,7 +1,6 @@
 CREATE OR REPLACE FUNCTION cron.Register(
 _Function                   regprocedure,
-_Fork                       boolean     DEFAULT FALSE,
-_Processes                  integer     DEFAULT 1,
+_DedicatedProcesses         integer     DEFAULT 0,
 _RunEvenIfOthersAreWaiting  boolean     DEFAULT FALSE,
 _RetryOnError               boolean     DEFAULT FALSE,
 _RunAfterTimestamp          timestamptz DEFAULT NULL,
@@ -26,8 +25,8 @@ END IF;
 
 SELECT
     JobID,
-    ROW( Fork, Processes, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
-    ROW(_Fork,_Processes,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+    ROW( DedicatedProcesses, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
+    ROW(_DedicatedProcesses,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 INTO
     _JobID,
     _IdenticalConfiguration
@@ -38,18 +37,16 @@ IF FOUND THEN
         RAISE NOTICE 'Function % is already registered as JobID % with identical configuration', _Function, _JobID;
         RETURN _JobID;
     ELSE
-        RAISE EXCEPTION 'Function % is already registered as JobID % but with different configuration', _Function, _JobID;
+        RAISE NOTICE 'Function % is already registered as JobID % but with different configuration', _Function, _JobID;
     END IF;
 END IF;
 
-INSERT INTO cron.Jobs ( Function, Fork, Processes, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
-VALUES                (_Function,_Fork,_Processes,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+INSERT INTO cron.Jobs ( Function, DedicatedProcesses, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
+VALUES                (_Function,_DedicatedProcesses,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
 RETURNING JobID INTO STRICT _JobID;
 
-IF _Processes > 1 AND NOT _Fork THEN
-    RAISE EXCEPTION 'Multiple processes not possible if not _Fork := TRUE';
-END IF;
-INSERT INTO cron.Processes (JobID) SELECT _JobID FROM generate_series(1,_Processes);
+-- GREATEST(_DedicatedProcesses,1): Even if _DedicatedProcesses=0 we still want to insert one row in Processes
+INSERT INTO cron.Processes (JobID) SELECT _JobID FROM generate_series(1,GREATEST(_DedicatedProcesses,1));
 
 RETURN _JobID;
 END;
@@ -57,8 +54,7 @@ $FUNC$;
 
 ALTER FUNCTION cron.Register(
 _Function                   regprocedure,
-_Fork                       boolean,
-_Processes                  integer,
+_DedicatedProcesses                  integer,
 _RunEvenIfOthersAreWaiting  boolean,
 _RetryOnError               boolean,
 _RunAfterTimestamp          timestamptz,

@@ -13,6 +13,10 @@ IF cron.Is_Valid_Function(_Function) IS NOT TRUE THEN
     USING HINT = 'It must return BATCHJOBSTATE and the cronjob user must have been explicitly granted EXECUTE on the function.';
 END IF;
 
+IF (SELECT COUNT(*) FROM cron.Jobs WHERE Function = _Function) > 1 THEN
+    RAISE EXCEPTION 'Function % has multiple JobIDs registered, you will have to enable it manually by setting cron.Jobs.Enabled=TRUE for some or all rows', _Function;
+END IF;
+
 SELECT
     JobID,
     Enabled

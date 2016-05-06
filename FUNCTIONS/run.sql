@@ -4,24 +4,24 @@ LANGUAGE plpgsql
 SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
-_OK                boolean;
-_RunProcessID      integer;
-_JobID             integer;
-_Function          regprocedure;
-_Fork              boolean;
-_LastRunStartedAt  timestamptz;
-_LastRunFinishedAt timestamptz;
-_LastSQLSTATE      text;
-_LastSQLERRM       text;
-_seq_scan          bigint;
-_seq_tup_read      bigint;
-_idx_scan          bigint;
-_idx_tup_fetch     bigint;
-_n_tup_ins         bigint;
-_n_tup_upd         bigint;
-_n_tup_del         bigint;
-_n_tup_hot_upd     bigint;
-_SQL               text;
+_OK                 boolean;
+_JobID              integer;
+_Function           regprocedure;
+_RunProcessID       integer;
+_DedicatedProcesses integer;
+_LastRunStartedAt   timestamptz;
+_LastRunFinishedAt  timestamptz;
+_LastSQLSTATE       text;
+_LastSQLERRM        text;
+_seq_scan           bigint;
+_seq_tup_read       bigint;
+_idx_scan           bigint;
+_idx_tup_fetch      bigint;
+_n_tup_ins          bigint;
+_n_tup_upd          bigint;
+_n_tup_del          bigint;
+_n_tup_hot_upd      bigint;
+_SQL                text;
 BEGIN
 
 IF _ProcessID IS NULL THEN
@@ -30,23 +30,20 @@ END IF;
 
 IF _ProcessID = 0 THEN
     IF NOT pg_try_advisory_xact_lock('cron.Run(integer)'::regprocedure::int, 0) THEN
-        RAISE NOTICE 'Aborting cron.Run() because of a concurrent execution';
-        BatchJobState := NULL;
-        NewProcessID  := NULL;
-        RETURN;
+        RAISE EXCEPTION 'Aborting cron.Run() because of a concurrent execution';
     END IF;
 END IF;
 
 SELECT
     J.JobID,
     J.Function,
-    J.Fork,
-    P.ProcessID
+    P.ProcessID,
+    J.DedicatedProcesses
 INTO
     _JobID,
     _Function,
-    _Fork,
-    _RunProcessID
+    _RunProcessID,
+    _DedicatedProcesses
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE cron.Is_Valid_Function(Function)
@@ -66,16 +63,20 @@ IF NOT FOUND THEN
     -- It will keep calling us again after having slept for a second.
     BatchJobState := 'DONE';
     NewProcessID  := NULL;
+    RAISE NOTICE '% ProcessID % pg_backend_pid % : no work -> DONE', clock_timestamp()::timestamp(0), _ProcessID, pg_backend_pid();
     RETURN;
 END IF;
 
-RAISE NOTICE 'JobID % Fork % ProcessID % RunProcessID % pg_backend_pid %', _JobID, _Fork, _ProcessID, _RunProcessID, pg_backend_pid();
-
-IF _Fork AND _ProcessID = 0 THEN
+IF _DedicatedProcesses <= 1 THEN
+    IF NOT pg_try_advisory_xact_lock(_Function::int, 0) THEN
+        RAISE EXCEPTION 'Aborting % because of a concurrent execution', _Function;
+    END IF;
+ELSIF _DedicatedProcesses > 1 AND _ProcessID = 0 THEN
     -- Tell main process to start new process by returning a NOT NULL NewProcessID
     UPDATE cron.Processes SET Running = TRUE WHERE ProcessID = _RunProcessID AND Running IS FALSE RETURNING TRUE INTO STRICT _OK;
     BatchJobState := 'AGAIN';
     NewProcessID  := _RunProcessID;
+    RAISE NOTICE '% ProcessID % pg_backend_pid % : spawn new process -> AGAIN [JobID % Function % DedicatedProcesses % RunProcessID %]', clock_timestamp()::timestamp(0), _ProcessID, pg_backend_pid(), _JobID, _Function, _DedicatedProcesses, _RunProcessID;
     RETURN;
 END IF;
 
@@ -106,9 +107,9 @@ FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
     _SQL := 'SELECT '||format(replace(_Function::text,'(integer)','(%s)'),_RunProcessID);
-    RAISE NOTICE 'Starting cron job % process % %', _JobID, _RunProcessID, _SQL;
+    RAISE DEBUG 'Starting cron job % process % %', _JobID, _RunProcessID, _SQL;
     EXECUTE _SQL USING _RunProcessID INTO STRICT BatchJobState;
-    RAISE NOTICE 'Finished cron job % process % % -> %', _JobID, _RunProcessID, _SQL, BatchJobState;
+    RAISE DEBUG 'Finished cron job % process % % -> %', _JobID, _RunProcessID, _SQL, BatchJobState;
     IF (BatchJobState IN ('DONE','AGAIN')) IS NOT TRUE THEN
         RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, BatchJobState;
     END IF;
@@ -161,6 +162,7 @@ RETURNING TRUE INTO STRICT _OK;
 -- Tell our while-loop-caller-script to continue calling us until there is no more PgJobs to execute:
 BatchJobState := 'AGAIN';
 NewProcessID  := NULL;
+RAISE NOTICE '% ProcessID % pg_backend_pid % : more work -> AGAIN [JobID % Function % DedicatedProcesses % RunProcessID %]', clock_timestamp()::timestamp(0), _ProcessID, pg_backend_pid(), _JobID, _Function, _DedicatedProcesses, _RunProcessID;
 RETURN;
 END;
 $FUNC$;
