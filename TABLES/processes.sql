@@ -1,7 +1,7 @@
 CREATE TABLE cron.Processes (
 ProcessID                 serial       NOT NULL,
 JobID                     integer      NOT NULL REFERENCES cron.Jobs(JobID),
-Running                   boolean      NOT NULL DEFAULT FALSE,
+Dedicated                 boolean      NOT NULL DEFAULT FALSE,
 FirstRunStartedAt         timestamptz,
 FirstRunFinishedAt        timestamptz,
 LastRunStartedAt          timestamptz,

@@ -1,14 +1,15 @@
 CREATE OR REPLACE FUNCTION cron.Register(
 _Function                   regprocedure,
 _DedicatedProcesses         integer     DEFAULT 0,
+_Concurrent                 boolean     DEFAULT TRUE,
 _RunEvenIfOthersAreWaiting  boolean     DEFAULT FALSE,
 _RetryOnError               boolean     DEFAULT FALSE,
+_IntervalAGAIN              interval    DEFAULT '100 ms'::interval,
+_IntervalDONE               interval    DEFAULT NULL,
 _RunAfterTimestamp          timestamptz DEFAULT NULL,
 _RunUntilTimestamp          timestamptz DEFAULT NULL,
 _RunAfterTime               time        DEFAULT NULL,
-_RunUntilTime               time        DEFAULT NULL,
-_IntervalAGAIN              interval    DEFAULT NULL,
-_IntervalDONE               interval    DEFAULT NULL
+_RunUntilTime               time        DEFAULT NULL
 )
 RETURNS integer
 LANGUAGE plpgsql
@@ -25,8 +26,8 @@ END IF;
 
 SELECT
     JobID,
-    ROW( DedicatedProcesses, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
-    ROW(_DedicatedProcesses,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+    ROW( DedicatedProcesses, RunEvenIfOthersAreWaiting, RetryOnError, IntervalAGAIN, IntervalDONE) IS NOT DISTINCT FROM
+    ROW(_DedicatedProcesses,_RunEvenIfOthersAreWaiting,_RetryOnError,_IntervalAGAIN,_IntervalDONE)
 INTO
     _JobID,
     _IdenticalConfiguration
@@ -41,8 +42,8 @@ IF FOUND THEN
     END IF;
 END IF;
 
-INSERT INTO cron.Jobs ( Function, DedicatedProcesses, RunEvenIfOthersAreWaiting, RetryOnError, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, IntervalAGAIN, IntervalDONE)
-VALUES                (_Function,_DedicatedProcesses,_RunEvenIfOthersAreWaiting,_RetryOnError,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_IntervalAGAIN,_IntervalDONE)
+INSERT INTO cron.Jobs ( Function, DedicatedProcesses, Concurrent, RunEvenIfOthersAreWaiting, RetryOnError, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime)
+VALUES                (_Function,_DedicatedProcesses,_Concurrent,_RunEvenIfOthersAreWaiting,_RetryOnError,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime)
 RETURNING JobID INTO STRICT _JobID;
 
 -- GREATEST(_DedicatedProcesses,1): Even if _DedicatedProcesses=0 we still want to insert one row in Processes
@@ -54,13 +55,14 @@ $FUNC$;
 
 ALTER FUNCTION cron.Register(
 _Function                   regprocedure,
-_DedicatedProcesses                  integer,
+_DedicatedProcesses         integer,
+_Concurrent                 boolean,
 _RunEvenIfOthersAreWaiting  boolean,
 _RetryOnError               boolean,
+_IntervalAGAIN              interval,
+_IntervalDONE               interval,
 _RunAfterTimestamp          timestamptz,
 _RunUntilTimestamp          timestamptz,
 _RunAfterTime               time,
-_RunUntilTime               time,
-_IntervalAGAIN              interval,
-_IntervalDONE               interval
+_RunUntilTime               time
 ) OWNER TO pgcronjob;

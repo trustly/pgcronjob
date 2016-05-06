@@ -19,10 +19,12 @@ GRANT USAGE ON SCHEMA cron TO pgcronjob;
 GRANT SELECT,UPDATE ON TABLE cron.Jobs TO pgcronjob;
 GRANT INSERT ON TABLE cron.Log TO pgcronjob;
 GRANT USAGE ON SEQUENCE cron.log_logid_seq TO pgcronjob;
+INSERT INTO cron.Jobs (JobID,Function) VALUES (0,'cron.Run(integer)');
+INSERT INTO cron.Processes (ProcessID,JobID) VALUES (0,0);
+
 -- For testing only, remove these lines in production:
 \ir FUNCTIONS/function_template_skeleton.sql
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '1 second', _DedicatedProcesses := 0);
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '2 second', _DedicatedProcesses := 1);
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '3 second', _DedicatedProcesses := 3);
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '5 second', _DedicatedProcesses := 5);
+SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.1 second', _DedicatedProcesses := 0);
+SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.3 second', _DedicatedProcesses := 1);
+SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.5 second', _DedicatedProcesses := 2);
 COMMIT;
