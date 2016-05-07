@@ -18,8 +18,6 @@ sub SQL_Run {
 }
 
 my $Processes = {};
-$Processes->{0}->{DatabaseHandle} = DBI->connect(@connect) or die "Unable to connect";
-$Processes->{0}->{Run} = $Processes->{0}->{DatabaseHandle}->prepare(SQL_Run(0), {pg_async => PG_ASYNC});
 $Processes->{0}->{RunAgainAtTime} = time;
 
 while (1) {
