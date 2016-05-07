@@ -8,6 +8,8 @@ RunEvenIfOthersAreWaiting boolean      NOT NULL DEFAULT FALSE,
 RetryOnError              boolean      NOT NULL DEFAULT FALSE,
 IntervalAGAIN             interval     NOT NULL DEFAULT '100 ms'::interval, -- time to sleep between each db txn commit to spread the load
 IntervalDONE              interval,    -- time to sleep after a cron job has completed and has no more work to do for now, NULL means never run again
+KeepAliveAGAIN            boolean      NOT NULL DEFAULT TRUE,
+KeepAliveDONE             boolean      NOT NULL DEFAULT FALSE,
 RunAfterTimestamp         timestamptz,
 RunUntilTimestamp         timestamptz,
 RunAfterTime              time,

@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION cron.Run(OUT BatchJobState batchjobstate, OUT RunAgainInSeconds numeric, OUT NewProcessID integer, _ProcessID integer)
+CREATE OR REPLACE FUNCTION cron.Run(OUT BatchJobState batchjobstate, OUT KeepAlive boolean, OUT RunAgainInSeconds numeric, OUT NewProcessID integer, _ProcessID integer)
 RETURNS RECORD
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
@@ -12,6 +12,8 @@ _DedicatedProcesses integer;
 _Concurrent         boolean;
 _IntervalAGAIN      interval;
 _IntervalDONE       interval;
+_KeepAliveAGAIN     boolean;
+_KeepAliveDONE      boolean;
 _LastRunStartedAt   timestamptz;
 _LastRunFinishedAt  timestamptz;
 _LastSQLSTATE       text;
@@ -44,7 +46,9 @@ SELECT
     J.DedicatedProcesses,
     J.Concurrent,
     J.IntervalAGAIN,
-    J.IntervalDONE
+    J.IntervalDONE,
+    J.KeepAliveAGAIN,
+    J.KeepAliveDONE
 INTO
     _JobID,
     _Function,
@@ -52,7 +56,9 @@ INTO
     _DedicatedProcesses,
     _Concurrent,
     _IntervalAGAIN,
-    _IntervalDONE
+    _IntervalDONE,
+    _KeepAliveAGAIN,
+    _KeepAliveDONE
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE cron.Is_Valid_Function(J.Function)
@@ -70,6 +76,7 @@ ORDER BY P.LastRunStartedAt ASC NULLS FIRST;
 IF NOT FOUND THEN
     -- No work
     BatchJobState     := 'AGAIN';
+    KeepAlive         := _KeepAliveAGAIN;
     NewProcessID      := NULL;
     RunAgainInSeconds := 1;
     RAISE NOTICE '% ProcessID % pg_backend_pid % : no work -> AGAIN [RunAgainInSeconds %]', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid(), RunAgainInSeconds;
@@ -86,6 +93,7 @@ IF _DedicatedProcesses > 0 AND _ProcessID = 0 THEN
     -- Tell main process to start new process by returning a NOT NULL NewProcessID
     UPDATE cron.Processes SET Dedicated = TRUE WHERE ProcessID = _RunProcessID AND Dedicated IS FALSE RETURNING TRUE INTO STRICT _OK;
     BatchJobState     := 'AGAIN';
+    KeepAlive         := _KeepAliveAGAIN;
     NewProcessID      := _RunProcessID;
     RunAgainInSeconds := 0;
     RAISE NOTICE '% ProcessID % pg_backend_pid % : spawn new process -> AGAIN [JobID % Function % DedicatedProcesses % RunProcessID % RunAgainInSeconds %]', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid(), _JobID, _Function, _DedicatedProcesses, _RunProcessID, RunAgainInSeconds;
@@ -123,8 +131,10 @@ BEGIN
     EXECUTE _SQL USING _RunProcessID INTO STRICT BatchJobState;
     RAISE DEBUG 'Finished cron job % process % % -> %', _JobID, _RunProcessID, _SQL, BatchJobState;
     IF BatchJobState = 'AGAIN' THEN
+        KeepAlive         := _KeepAliveAGAIN;
         RunAgainInSeconds := extract(epoch from _IntervalAGAIN);
     ELSIF BatchJobState = 'DONE' THEN
+        KeepAlive         := _KeepAliveDONE;
         RunAgainInSeconds := extract(epoch from _IntervalDONE);
     ELSE
         RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, BatchJobState;
@@ -174,6 +184,10 @@ INTO STRICT
 INSERT INTO cron.Log ( JobID,BatchJobState,    PgBackendPID,StartTxnAt,        StartedAt,        FinishedAt, LastSQLSTATE, LastSQLERRM, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
 VALUES               (_JobID,BatchJobState,pg_backend_pid(),     now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
 RETURNING TRUE INTO STRICT _OK;
+
+IF RunAgainInSeconds IS NULL THEN
+    KeepAlive := FALSE;
+END IF;
 
 NewProcessID  := NULL;
 RAISE NOTICE '% ProcessID % pg_backend_pid % : more work -> % [JobID % Function % DedicatedProcesses % RunProcessID % RunAgainInSeconds %]', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid(), BatchJobState, _JobID, _Function, _DedicatedProcesses, _RunProcessID, RunAgainInSeconds;

@@ -14,7 +14,7 @@ my @connect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintEr
 sub SQL_Run {
     my $ProcessID = shift;
     die "Invalid ProcessID: $ProcessID" unless $ProcessID =~ m/^\d+$/;
-    return "SELECT BatchJobState, RunAgainInSeconds, NewProcessID FROM cron.Run(_ProcessID := $ProcessID)";
+    return "SELECT BatchJobState, KeepAlive, RunAgainInSeconds, NewProcessID FROM cron.Run(_ProcessID := $ProcessID)";
 }
 
 my $Processes = {};
@@ -26,18 +26,28 @@ while (1) {
     foreach my $ProcessID (sort keys %{$Processes}) {
         if ($Processes->{$ProcessID}->{RunAgainAtTime}) {
             next if $Processes->{$ProcessID}->{RunAgainAtTime} > time;
+            unless ($Processes->{$ProcessID}->{DatabaseHandle}) {
+                $Processes->{$ProcessID}->{DatabaseHandle} = DBI->connect(@connect) or die "Unable to connect";
+                $Processes->{$ProcessID}->{Run} = $Processes->{$ProcessID}->{DatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
+            }
             $Processes->{$ProcessID}->{Run}->execute();
             delete $Processes->{$ProcessID}->{RunAgainAtTime};
         } elsif ($Processes->{$ProcessID}->{Run}->pg_ready) {
             my $rows = $Processes->{$ProcessID}->{Run}->pg_result;
             die "Unexpected number of rows: $rows" unless $rows == 1;
-            my ($BatchJobState, $RunAgainInSeconds, $NewProcessID) = $Processes->{$ProcessID}->{Run}->fetchrow_array();
-            if ($BatchJobState eq 'DONE' && !defined($RunAgainInSeconds)) {
+            my ($BatchJobState, $KeepAlive, $RunAgainInSeconds, $NewProcessID) = $Processes->{$ProcessID}->{Run}->fetchrow_array();
+            if (!$KeepAlive) {
                 $Processes->{$ProcessID}->{Run}->finish;
+                $Processes->{$ProcessID}->{Run} = undef;
+                delete $Processes->{$ProcessID}->{Run};
                 $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
-                delete $Processes->{$ProcessID};
-            } else {
+                $Processes->{$ProcessID}->{DatabaseHandle} = undef;
+                delete $Processes->{$ProcessID}->{DatabaseHandle};
+            }
+            if (defined($RunAgainInSeconds)) {
                 $Processes->{$ProcessID}->{RunAgainAtTime} = time() + $RunAgainInSeconds;
+            } else {
+                delete $Processes->{$ProcessID};
             }
             die "cron.Run() returned an invalid batchjobstate: $BatchJobState" unless $BatchJobState =~ m/^(AGAIN|DONE)$/;
             if ($NewProcessID) {

@@ -24,7 +24,7 @@ INSERT INTO cron.Processes (ProcessID,JobID) VALUES (0,0);
 
 -- For testing only, remove these lines in production:
 \ir FUNCTIONS/function_template_skeleton.sql
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.1 second', _DedicatedProcesses := 0);
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.3 second', _DedicatedProcesses := 1);
-SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.5 second', _DedicatedProcesses := 2);
+SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.1 second', _IntervalDONE := '10 seconds', _DedicatedProcesses := 0, _KeepAliveAGAIN := FALSE, _KeepAliveDONE := FALSE);
+SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.3 second', _IntervalDONE := '30 seconds', _DedicatedProcesses := 1, _KeepAliveAGAIN := FALSE, _KeepAliveDONE := FALSE);
+SELECT cron.Register('cron.Function_Template_Skeleton(integer)', _IntervalAGAIN := '0.5 second', _IntervalDONE := '50 seconds', _DedicatedProcesses := 2, _KeepAliveAGAIN := FALSE, _KeepAliveDONE := FALSE);
 COMMIT;

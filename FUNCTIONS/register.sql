@@ -6,6 +6,8 @@ _RunEvenIfOthersAreWaiting  boolean     DEFAULT FALSE,
 _RetryOnError               boolean     DEFAULT FALSE,
 _IntervalAGAIN              interval    DEFAULT '100 ms'::interval,
 _IntervalDONE               interval    DEFAULT NULL,
+_KeepAliveAGAIN             boolean     DEFAULT TRUE,
+_KeepAliveDONE              boolean     DEFAULT FALSE,
 _RunAfterTimestamp          timestamptz DEFAULT NULL,
 _RunUntilTimestamp          timestamptz DEFAULT NULL,
 _RunAfterTime               time        DEFAULT NULL,
@@ -42,8 +44,8 @@ IF FOUND THEN
     END IF;
 END IF;
 
-INSERT INTO cron.Jobs ( Function, DedicatedProcesses, Concurrent, RunEvenIfOthersAreWaiting, RetryOnError, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime)
-VALUES                (_Function,_DedicatedProcesses,_Concurrent,_RunEvenIfOthersAreWaiting,_RetryOnError,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime)
+INSERT INTO cron.Jobs ( Function, DedicatedProcesses, Concurrent, RunEvenIfOthersAreWaiting, RetryOnError, IntervalAGAIN, IntervalDONE, KeepAliveAGAIN, KeepAliveDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime)
+VALUES                (_Function,_DedicatedProcesses,_Concurrent,_RunEvenIfOthersAreWaiting,_RetryOnError,_IntervalAGAIN,_IntervalDONE,_KeepAliveAGAIN,_KeepAliveDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime)
 RETURNING JobID INTO STRICT _JobID;
 
 -- GREATEST(_DedicatedProcesses,1): Even if _DedicatedProcesses=0 we still want to insert one row in Processes
@@ -61,6 +63,8 @@ _RunEvenIfOthersAreWaiting  boolean,
 _RetryOnError               boolean,
 _IntervalAGAIN              interval,
 _IntervalDONE               interval,
+_KeepAliveAGAIN             boolean,
+_KeepAliveDONE              boolean,
 _RunAfterTimestamp          timestamptz,
 _RunUntilTimestamp          timestamptz,
 _RunAfterTime               time,
