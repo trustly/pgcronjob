@@ -1,0 +1,103 @@
+#!/usr/bin/perl
+use strict;
+# use warnings;
+
+use DBI;
+use DBD::Pg;
+use Time::HiRes qw(time);
+use Data::Dumper;
+
+$| = 1;
+
+my @Connect       = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintError => 0, AutoCommit => 1});
+
+my @LISTENConnect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintError => 0, AutoCommit => 1});
+my $LISTENName = 'cron.Dispatch()';
+
+sub SQL_Run {
+    my $ProcessID = shift;
+    die "Invalid ProcessID: $ProcessID" unless $ProcessID =~ m/^\d+$/;
+    return "SELECT RunInSeconds FROM cron.Run(_ProcessID := $ProcessID)";
+}
+
+my $Processes = {};
+
+my $ConnectTime -= time;
+my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
+$ConnectTime += time;
+my $Restart = $DispatchDatabaseHandle->prepare('SELECT cron.Restart()');
+my $Dispatch = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, RunMaxOtherProcessesLimit FROM cron.Dispatch()');
+
+my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
+$LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
+
+$Restart->execute();
+
+my $DispatchTime = time;
+my $NumProcesses = 0;
+while (1) {
+    if (time > $DispatchTime) {
+        $Dispatch->execute();
+        my ($RunProcessID, $RunInSeconds, $RunMaxOtherProcessesLimit) = $Dispatch->fetchrow_array();
+        print "NumProcesses: $NumProcesses RunProcessID: $RunProcessID RunInSeconds: $RunInSeconds RunMaxOtherProcessesLimit: $RunMaxOtherProcessesLimit\n";
+        if (defined $RunProcessID) {
+            $Processes->{$RunProcessID} = {
+                RunAtTime                 => time() + $RunInSeconds,
+                RunMaxOtherProcessesLimit => $RunMaxOtherProcessesLimit,
+                DatabaseHandle            => undef,
+                Run                       => undef
+            };
+        } else {
+            $DispatchTime = time+1;
+        }
+    }
+    foreach my $ProcessID (sort {$Processes->{$a}->{RunAtTime} <=> $Processes->{$b}->{RunAtTime}} keys %{$Processes}) {
+        my $Process = $Processes->{$ProcessID};
+        my $RunAtTime                 = \$Process->{RunAtTime};
+        my $RunASAP                   = \$Process->{RunASAP};
+        my $RunMaxOtherProcessesLimit = \$Process->{RunMaxOtherProcessesLimit};
+        my $RunDatabaseHandle         = \$Process->{DatabaseHandle};
+        my $Run                       = \$Process->{Run};
+        if (defined $$RunAtTime) {
+            next if $$RunAtTime > time;
+            next if defined $$RunMaxOtherProcessesLimit && $NumProcesses > $$RunMaxOtherProcessesLimit;
+            unless (defined $$RunDatabaseHandle) {
+                $$RunDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
+                $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
+            }
+            $$Run->execute();
+            delete $Process->{RunAtTime};
+            $NumProcesses++;
+        } elsif ($$Run->pg_ready) {
+            $NumProcesses--;
+            my $Rows = $$Run->pg_result;
+            die "Unexpected number of rows: $Rows" unless $Rows == 1;
+            my ($RunInSeconds) = $$Run->fetchrow_array();
+            if (!defined $RunInSeconds || $RunInSeconds > $ConnectTime) {
+                $$Run->finish;
+                $$Run = undef;
+                delete $Process->{Run};
+                $$RunDatabaseHandle->disconnect;
+                $$RunDatabaseHandle = undef;
+                delete $Process->{DatabaseHandle};
+            }
+            if (defined $RunInSeconds) {
+                $$RunAtTime = time + ($$RunASAP ? 0 : $RunInSeconds);
+                $$RunASAP = 0;
+            } else {
+                delete $Processes->{$ProcessID};
+            }
+        }
+    }
+    while (my $NOTIFY = $LISTENDatabaseHandle->pg_notifies) {
+        my ($NOTIFYName, $NOTIFYPID, $NOTIFYPayload) = @$NOTIFY;
+        next unless $NOTIFYName eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/;
+        my $ProcessID = $NOTIFYPayload;
+        print "Received NOTIFY ProcessID: $ProcessID\n";
+        if (defined $Processes->{$ProcessID}->{RunAtTime}) {
+            $Processes->{$ProcessID}->{RunAtTime} = time;
+        } else {
+            $Processes->{$ProcessID}->{RunASAP} = 1;
+        }
+    }
+}
