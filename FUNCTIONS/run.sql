@@ -26,11 +26,11 @@ _n_tup_hot_upd      bigint;
 _SQL                text;
 BEGIN
 
+SET LOCAL application_name = 'cron.Run(integer)';
+
 IF _ProcessID IS NULL THEN
     RAISE EXCEPTION 'Input param ProcessID cannot be NULL';
 END IF;
-
-RAISE NOTICE '% ProcessID % pg_backend_pid %', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
 
 SELECT
     J.JobID,
@@ -49,13 +49,13 @@ INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE P.Running IS TRUE
 AND P.ProcessID = _ProcessID;
 IF NOT FOUND THEN
-    RAISE NOTICE '% ProcessID % pg_backend_pid % : no work', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
+    RAISE DEBUG '% ProcessID % pg_backend_pid % : no work', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
     RETURN;
 END IF;
 
 IF NOT _Concurrent THEN
     IF NOT pg_try_advisory_xact_lock(_Function::int, 0) THEN
-        RAISE NOTICE 'Aborting % because of a concurrent execution', _Function;
+        RAISE DEBUG 'Aborting % because of a concurrent execution', _Function;
         RunInSeconds := _IntervalAGAIN;
         RETURN;
     END IF;
@@ -63,7 +63,9 @@ END IF;
 
 UPDATE cron.Processes SET
     FirstRunStartedAt = COALESCE(FirstRunStartedAt,clock_timestamp()),
-    LastRunStartedAt  = clock_timestamp()
+    LastRunStartedAt  = clock_timestamp(),
+    Calls             = Calls + 1,
+    PgBackendPID      = pg_backend_pid()
 WHERE ProcessID = _ProcessID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
 
 SELECT
@@ -88,9 +90,9 @@ FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
     _SQL := 'SELECT '||format(replace(_Function::text,'(integer)','(%s)'),_ProcessID);
-    RAISE NOTICE 'Starting cron job % process % %', _JobID, _ProcessID, _SQL;
+    RAISE DEBUG 'Starting cron job % process % %', _JobID, _ProcessID, _SQL;
     EXECUTE _SQL USING _ProcessID INTO STRICT _BatchJobState;
-    RAISE NOTICE 'Finished cron job % process % % -> %', _JobID, _ProcessID, _SQL, _BatchJobState;
+    RAISE DEBUG 'Finished cron job % process % % -> %', _JobID, _ProcessID, _SQL, _BatchJobState;
     IF _BatchJobState = 'AGAIN' THEN
         RunInSeconds := extract(epoch from _IntervalAGAIN);
     ELSIF _BatchJobState = 'DONE' THEN
@@ -145,7 +147,7 @@ INSERT INTO cron.Log ( JobID, BatchJobState,    PgBackendPID,StartTxnAt,        
 VALUES               (_JobID,_BatchJobState,pg_backend_pid(),     now(),_LastRunStartedAt,_LastRunFinishedAt,_LastSQLSTATE,_LastSQLERRM,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
 RETURNING TRUE INTO STRICT _OK;
 
-RAISE NOTICE '% ProcessID % pg_backend_pid % : % [JobID % Function % RunInSeconds %]', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid(), _BatchJobState, _JobID, _Function, RunInSeconds;
+RAISE DEBUG '% ProcessID % pg_backend_pid % : % [JobID % Function % RunInSeconds %]', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid(), _BatchJobState, _JobID, _Function, RunInSeconds;
 RETURN;
 END;
 $FUNC$;

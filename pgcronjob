@@ -6,6 +6,7 @@ use DBI;
 use DBD::Pg;
 use Time::HiRes qw(time);
 use Data::Dumper;
+use DateTime;
 
 $| = 1;
 
@@ -26,7 +27,10 @@ my $ConnectTime -= time;
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
 $ConnectTime += time;
 my $Restart = $DispatchDatabaseHandle->prepare('SELECT cron.Restart()');
-my $Dispatch = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, RunMaxOtherProcessesLimit FROM cron.Dispatch()');
+my $Dispatch = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, LimitProcesses FROM cron.Dispatch()');
+my $Jobs = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.Jobs');
+my $Status = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.Status');
+my $Log = $DispatchDatabaseHandle->prepare('SELECT LogID, JobID, BatchJobState, PgBackendPID, FinishedAt, LastSQLSTATE, LastSQLERRM, n_tup_ins, n_tup_upd, n_tup_del FROM cron.Log ORDER BY LogID DESC LIMIT 10');
 
 my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
 $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
@@ -38,14 +42,13 @@ my $NumProcesses = 0;
 while (1) {
     if (time > $DispatchTime) {
         $Dispatch->execute();
-        my ($RunProcessID, $RunInSeconds, $RunMaxOtherProcessesLimit) = $Dispatch->fetchrow_array();
-        print "NumProcesses: $NumProcesses RunProcessID: $RunProcessID RunInSeconds: $RunInSeconds RunMaxOtherProcessesLimit: $RunMaxOtherProcessesLimit\n";
+        my ($RunProcessID, $RunInSeconds, $LimitProcesses) = $Dispatch->fetchrow_array();
+        print "NumProcesses: $NumProcesses RunProcessID: $RunProcessID RunInSeconds: $RunInSeconds LimitProcesses: $LimitProcesses\n";
+        status();
         if (defined $RunProcessID) {
             $Processes->{$RunProcessID} = {
                 RunAtTime                 => time() + $RunInSeconds,
-                RunMaxOtherProcessesLimit => $RunMaxOtherProcessesLimit,
-                DatabaseHandle            => undef,
-                Run                       => undef
+                LimitProcesses => $LimitProcesses
             };
         } else {
             $DispatchTime = time+1;
@@ -55,12 +58,12 @@ while (1) {
         my $Process = $Processes->{$ProcessID};
         my $RunAtTime                 = \$Process->{RunAtTime};
         my $RunASAP                   = \$Process->{RunASAP};
-        my $RunMaxOtherProcessesLimit = \$Process->{RunMaxOtherProcessesLimit};
+        my $LimitProcesses = \$Process->{LimitProcesses};
         my $RunDatabaseHandle         = \$Process->{DatabaseHandle};
         my $Run                       = \$Process->{Run};
         if (defined $$RunAtTime) {
             next if $$RunAtTime > time;
-            next if defined $$RunMaxOtherProcessesLimit && $NumProcesses > $$RunMaxOtherProcessesLimit;
+            next if defined $$LimitProcesses && $$LimitProcesses ne '' && $NumProcesses > $$LimitProcesses;
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
@@ -100,4 +103,49 @@ while (1) {
             $Processes->{$ProcessID}->{RunASAP} = 1;
         }
     }
+}
+
+sub status {
+    use Term::ANSIColor;
+    use Text::ASCIITable;
+    use Term::ReadLine;
+    system('clear');
+
+    printf("ConnectTime: %.3f NumProcesses: %d Time: %s\n", $ConnectTime, $NumProcesses, DateTime->now(time_zone => 'local'));
+
+    my $JobsTable = Text::ASCIITable->new({headingText => 'cron.Jobs'});
+    $JobsTable->setCols('JobID','Function','LimitProcesses','Concurrent','Enabled','RunIfWaiting','RetryOnError','IntervalAGAIN','IntervalDONE','RunAfterTimestamp','RunUntilTimestamp','RunAfterTime','RunUntilTime','RequestedBy','RequestedAt');
+    $Jobs->execute();
+    my $ret = $Jobs->fetchall_arrayref();
+    foreach my $r (@$ret) {
+        $JobsTable->addRow($r);
+    }
+    print $JobsTable;
+
+    my $StatusTable = Text::ASCIITable->new({headingText => 'cron.Status'});
+    $StatusTable->setCols('JobID','Function','ProcessID','Running','Calls','BatchJobState','LastSQLSTATE','LastSQLERRM','PgBackendPID','procpid','waiting','current_query');
+    $Status->execute();
+    my $ret = $Status->fetchall_arrayref();
+    foreach my $r (@$ret) {
+        $StatusTable->addRow($r);
+    }
+    print $StatusTable;
+
+    my $ProcessesTable = Text::ASCIITable->new({headingText => '$Processes'});
+    $ProcessesTable->setCols('ProcessID','Status','RunInSeconds','RunASAP','LimitProcesses','DatabaseHandle');
+    foreach my $ProcessID (sort keys %{$Processes}) {
+        my $P = $Processes->{$ProcessID};
+        $ProcessesTable->addRow($ProcessID,defined($P->{RunAtTime}) ? 'QUEUED' : 'RUNNING',defined($P->{RunAtTime}) ? sprintf('%.2f',$P->{RunAtTime}-time()) : '',$P->{RunASAP},$P->{LimitProcesses},defined($P->{DatabaseHandle}) ? 'OPEN' : 'CLOSED');
+    }
+    print $ProcessesTable;
+
+    my $LogTable = Text::ASCIITable->new({headingText => 'cron.Log'});
+    $LogTable->setCols('LogID','JobID','BatchJobState','PgBackendPID','FinishedAt','LastSQLSTATE','LastSQLERRM','n_tup_ins','n_tup_upd','n_tup_del');
+    $Log->execute();
+    my $ret = $Log->fetchall_arrayref();
+    foreach my $r (@$ret) {
+        $LogTable->addRow($r);
+    }
+    print $LogTable;
+
 }

@@ -63,7 +63,7 @@ If you want other settings than the default which is to just run the function un
 then such special settings can easily be defined when registering the function:
 
     # SELECT cron.Register('cron.function_template_skeleton()',
-        _RunEvenIfOthersAreWaiting  := TRUE,
+        _RunIfWaiting  := TRUE,
         _RetryOnError               := TRUE,
         _RunAfterTimestamp          := '2016-05-25 03:00:00+01',
         _RunUntilTimestamp          := '2016-05-28 04:00:00+01',
@@ -106,7 +106,7 @@ The settings are conditions that must all be TRUE for the cronjob to run, i.e. t
 
 Always NOT NULL:
 - Enabled boolean NOT NULL DEFAULT TRUE: Controls whether the cronjob is enabled or not.
-- RunEvenIfOthersAreWaiting boolean NOT NULL DEFAULT FALSE: Controls whether to run the cronjob or not if there are other waiting db txns (pg_stat_activity.waiting).
+- RunIfWaiting boolean NOT NULL DEFAULT FALSE: Controls whether to run the cronjob or not if there are other waiting db txns (pg_stat_activity.waiting).
 - RetryOnError boolean NOT NULL DEFAULT FALSE: Controls whether to run the cronjob ever again if the user-defined function would throw an error.
 
 Can be NULL (which means setting is ignored):
