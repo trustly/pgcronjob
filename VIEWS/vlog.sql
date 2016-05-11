@@ -1,0 +1,23 @@
+CREATE OR REPLACE VIEW cron.vLog AS
+SELECT
+LogID,
+JobID,
+BatchJobState,
+PgBackendPID,
+StartTxnAt::timestamptz(0),
+(FinishedAt-StartedAt)::interval(3) AS Duration,
+LastSQLSTATE,
+LastSQLERRM,
+seq_scan,
+seq_tup_read,
+idx_scan,
+idx_tup_fetch,
+n_tup_ins,
+n_tup_upd,
+n_tup_del
+FROM cron.Log
+ORDER BY LogID DESC
+LIMIT 5;
+
+ALTER TABLE cron.vLog OWNER TO pgcronjob;
+

@@ -11,6 +11,11 @@ _BatchJobState      batchjobstate;
 _Concurrent         boolean;
 _IntervalAGAIN      interval;
 _IntervalDONE       interval;
+_RunIfWaiting       boolean;
+_RunAfterTimestamp  timestamptz;
+_RunUntilTimestamp  timestamptz;
+_RunAfterTime       interval;
+_RunUntilTime       interval;
 _LastRunStartedAt   timestamptz;
 _LastRunFinishedAt  timestamptz;
 _LastSQLSTATE       text;
@@ -36,29 +41,51 @@ SELECT
     J.JobID,
     J.Function,
     J.Concurrent,
+    J.RunIfWaiting,
+    J.RunAfterTimestamp,
+    J.RunUntilTimestamp,
+    J.RunAfterTime,
+    J.RunUntilTime,
     J.IntervalAGAIN,
     J.IntervalDONE
 INTO STRICT
     _JobID,
     _Function,
     _Concurrent,
+    _RunIfWaiting,
+    _RunAfterTimestamp,
+    _RunUntilTimestamp,
+    _RunAfterTime,
+    _RunUntilTime,
     _IntervalAGAIN,
     _IntervalDONE
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
-WHERE P.Running IS TRUE
-AND P.ProcessID = _ProcessID;
+WHERE P.ProcessID = _ProcessID
+AND P.Running IS TRUE;
 IF NOT FOUND THEN
     RAISE DEBUG '% ProcessID % pg_backend_pid % : no work', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
     RETURN;
 END IF;
 
-IF NOT _Concurrent THEN
-    IF NOT pg_try_advisory_xact_lock(_Function::int, 0) THEN
-        RAISE DEBUG 'Aborting % because of a concurrent execution', _Function;
-        RunInSeconds := _IntervalAGAIN;
-        RETURN;
-    END IF;
+IF _RunAfterTimestamp > now()
+OR _RunUntilTimestamp < now()
+OR _RunAfterTime      > now()::time
+OR _RunUntilTime      < now()::time
+THEN
+    UPDATE cron.Processes SET
+        BatchJobState = 'DONE',
+        Running       = FALSE
+    WHERE ProcessID = _ProcessID
+    RETURNING TRUE INTO STRICT _OK;
+    RunInSeconds := NULL;
+    RETURN;
+END IF;
+
+IF NOT cron.No_Waiting() AND NOT _RunIfWaiting THEN
+    RAISE DEBUG '% ProcessID % pg_backend_pid % : other processes are waiting, aborting', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
+    RunInSeconds := extract(epoch from _IntervalAGAIN);
+    RETURN;
 END IF;
 
 UPDATE cron.Processes SET
@@ -89,6 +116,9 @@ INTO STRICT
 FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
+    IF NOT pg_try_advisory_xact_lock(_Function::int, 0) AND NOT _Concurrent THEN
+        RAISE EXCEPTION 'Aborting % because of a concurrent execution', _Function;
+    END IF;
     _SQL := 'SELECT '||format(replace(_Function::text,'(integer)','(%s)'),_ProcessID);
     RAISE DEBUG 'Starting cron job % process % %', _JobID, _ProcessID, _SQL;
     EXECUTE _SQL USING _ProcessID INTO STRICT _BatchJobState;
@@ -101,7 +131,7 @@ BEGIN
         RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, _BatchJobState;
     END IF;
 EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'Error when executing cron job %: SQLSTATE % SQLERRM %', _Function, SQLSTATE, SQLERRM;
+    RAISE DEBUG 'Error when executing cron job %: SQLSTATE % SQLERRM %', _Function, SQLSTATE, SQLERRM;
     _LastSQLSTATE := SQLSTATE;
     _LastSQLERRM  := SQLERRM;
 END;

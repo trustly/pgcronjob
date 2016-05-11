@@ -2,151 +2,112 @@
 
 Run PostgreSQL user-defined database functions in a cron like fashion.
 
-## Interface
+## DESCRIPTION
 
-The user-defined function must return the pgcronjob-defined ENUM type BatchJobState.
-BatchJobState has two values, 'AGAIN' or 'DONE'.
-If the user-defined function returns 'AGAIN', pgcronjob will run the function again in due time,
-and if 'DONE' is returned, it will never run the function ever again.
+To run your functions using pgcronjob, your function must return the pgcronjob-defined ENUM type BatchJobState, which has two values, 'AGAIN' or 'DONE'.
+This is how your function tells pgcronjob if it wants to be run AGAIN or if the work has completed and we are DONE.
+A boolean return value would have worked as well, but boolean values can easily be misinterpeted while the words AGAIN and DONE are much more precise,
+so hopefully this will help avoid one or two accidents here and there.
 
-This is to protect against accidents since boolean values can easily be misinterpeted while the words AGAIN and DONE are much more precise.
+## SYNOPSIS
 
-This example function is included as an example:
+Run until an error is encountered (DEFAULT):
+```
+SELECT cron.Register('cron.Example_Random_Error(integer)', _RetryOnError := FALSE);
+```
 
-    CREATE OR REPLACE FUNCTION cron.Function_Template_Skeleton()
-    RETURNS batchjobstate
-    LANGUAGE plpgsql
-    SET search_path TO public, pg_temp
-    AS $FUNC$
-    DECLARE
-    BEGIN
-    RAISE NOTICE 'Hello world!';
-    PERFORM pg_sleep(random());
-    RAISE NOTICE 'Slept for a while.';
-    IF random() < 0.5 THEN
-        -- Tell cron.Run() we have more work to do and we want it to run us again in due time
-        RAISE NOTICE 'See you again!';
-        RETURN 'AGAIN';
-    ELSIF random() < 0.5 THEN
-        -- Throw error to cron.Run() to test errors
-        RAISE EXCEPTION 'Simulate error in CronJob function';
-    ELSE
-        -- Tell cron.Run() we're done and we don't want it to run us ever again
-        RAISE NOTICE 'Bye world!';
-        RETURN 'DONE';
-    END IF;
-    END;
-    $FUNC$;
-    
-    GRANT EXECUTE ON FUNCTION cron.Function_Template_Skeleton() TO pgcronjob;
+Keep running even if an error is encountered:
+```
+SELECT cron.Register('cron.Example_Random_Error(integer)', _RetryOnError := TRUE);
+```
 
-Then all you have to do is to register the function to be run by pgcronjob:
+Allow concurrent execution (DEFAULT):
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _Concurrent := TRUE);
+```
 
-    # SELECT cron.Register('cron.function_template_skeleton()');
-     register 
-    -----------
-            1
-    (1 row)
+Detect and prevent concurrent:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _Concurrent := FALSE);
+```
 
-And then setup your normal OS cron to run pgcronjob.sh every minute.
-pgcronjob.sh will then in a while loop call the database function cron.Run() as long as it returns 'AGAIN',
-which is does as long as there is some cronjob that should be executed.
+Wait 100 ms between each execution (DEFAULT):
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval);
+```
 
-If your OS cron would execute pgcronjob.sh again while it's already running, it will simply return immediately
-because cron.Run() will return 'AGAIN' if it detects it's already running. This is implemented using pg_try_advisory_xact_lock().
+No waiting, execute again immediately:
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '0'::interval);
+```
 
-This prevents cron.Run() from ever occupying more than one CPU core, which could be considered a feature or a misfeature.
+Run cron job in one single process (DEFAULT):
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _Processes := 1);
+```
 
-Support to control how many concurrent cron.Run() processes that can run in parallel might be added in the future. Patches welcome.
+Run cron job concurrently in two separate processes (pg backends):
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _Processes := 2);
+```
 
-If you want other settings than the default which is to just run the function until it returns 'DONE',
-then such special settings can easily be defined when registering the function:
+Don't limit how many cron job functions that can be running in parallell (DEFAULT):
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _MaxProcesses := NULL);
+```
 
-    # SELECT cron.Register('cron.function_template_skeleton()',
-        _RunIfWaiting  := TRUE,
-        _RetryOnError               := TRUE,
-        _RunAfterTimestamp          := '2016-05-25 03:00:00+01',
-        _RunUntilTimestamp          := '2016-05-28 04:00:00+01',
-        _RunAfterTime               := '03:00:00',
-        _RunUntilTime               := '04:00:00',
-        _IntervalAGAIN              := '1 second',
-        _IntervalDONE               := '30 minutes'
-    );
+Only run cron job if there is at most 5 other cron job processes running:
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _MaxProcesses := 5);
+```
 
-None, some, or all of the settings can be specificed when registering the function.
+Run until cron job returns DONE, then never run again (DEFAULT):
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalDONE := NULL);
+```
 
-To disable the cronjob, use the cron.Disable() function:
+Run until cron job returns DONE, then run again after 60 seconds:
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalDONE := '60 seconds'::interval);
+```
 
-    SELECT cron.Disable('cron.function_template_skeleton()');
-     cronjob_disable 
-    -----------------
-                   1
-    (1 row)
+The two examples below uses pg_catalog.pg_stat_activity.waiting or pg_catalog.pg_stat_activity.wait_event depending on the PostgreSQL version.
 
-To re-enable it, use the cron.Enable() function:
+Don't run cron job if any other PostgreSQL backend processes are waiting (DEFAULT):
+```
+SELECT cron.Register('cron.Example_Update_Same_Row(integer)', _RunIfWaiting := FALSE);
+```
 
-    SELECT cron.Enable('cron.function_template_skeleton()');
-     cronjob_enable 
-    ----------------
-                  1
-    (1 row)
+Run cron job even if there are other PostgreSQL backend processes waiting:
+```
+SELECT cron.Register('cron.Example_Update_Same_Row(integer)', _RunIfWaiting := TRUE);
+```
+Run at specific timestamp and then forever:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _RunIfWaiting := TRUE, _RunAfterTimestamp := now()+'10 seconds'::interval);
+```
 
-## Security
+Run immediately from now until a specific timestamp in the future:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _RunIfWaiting := TRUE, _RunUntilTimestamp := now()+'15 seconds'::interval);
+```
 
-The system makes sure the functions in Jobs really are meant to be executed by checking two conditions that must both be met:
+Run between two specific timestamps:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _RunIfWaiting := TRUE, _RunAfterTimestamp := now()+'20 seconds'::interval, _RunUntilTimestamp := now()+'25 seconds'::interval);
+```
 
-- The function's returned type is BatchJobState
-- The pgcronjob user has been explicitly granted EXECUTE on the function.
+Run after a specific time of day and then forever:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _RunIfWaiting := TRUE, _RunAfterTime := now()::time+'30 seconds'::interval);
+```
 
-If the user-defined function would not return AGAIN or DONE, such as NULL, then pgcronjob will throw an exception and only rerun the function if RetryOnError IS TRUE.
+Run immediately from now until a specific time of day:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _RunIfWaiting := TRUE, _RunUntilTime := now()::time+'35 seconds'::interval);
+```
 
-## Settings
-
-The settings are conditions that must all be TRUE for the cronjob to run, i.e. they are AND'd together.
-
-Always NOT NULL:
-- Enabled boolean NOT NULL DEFAULT TRUE: Controls whether the cronjob is enabled or not.
-- RunIfWaiting boolean NOT NULL DEFAULT FALSE: Controls whether to run the cronjob or not if there are other waiting db txns (pg_stat_activity.waiting).
-- RetryOnError boolean NOT NULL DEFAULT FALSE: Controls whether to run the cronjob ever again if the user-defined function would throw an error.
-
-Can be NULL (which means setting is ignored):
-- RunAfterTimestamp timestamptz: Run only after the specified timestamp.
-- RunUntilTimestamp timestamptz: Run only until the specified timestamp.
-- RunAfterTime time: Run only after the specified time of the day.
-- RunBeforeTime time: Run only until the specified time of the day.
-- IntervalAGAIN interval: Time to sleep between each db txn commit to spread the load.
-- IntervalDONE interval: Time to sleep after a cron job has completed and has no more work to do for now.
-
-## Logging
-
-For each executed cronjob, we log the following:
-
-- FirstRunStartedAt         timestamptz: The timestamp when the job ran the first time. NULL means it hasn't run even once yet.
-- FirstRunFinishedAt        timestamptz: The timestamp when the job finished the first time. NULL means it hasn't finished even once yet.
-- LastRunStartedAt          timestamptz: The timestamp when the job ran the last time. NULL means it hasn't run even once yet.
-- LastRunFinishedAt         timestamptz: The timestamp when the job finished the last time. NULL means it hasn't finished even once yet.
-- BatchJobState             batchjobstate: The BatchJobState for the last run. AGAIN means the job wants to be run again. DONE means the job will not be run again, unless manually overridden by changing this column to AGAIN.
-- LastSQLSTATE              text: If NOT NULL, it means the last run didn't finish due to an error. This column shows the SQLSTATE code for the error.
-- LastSQLERRM               text: IF NOT NULL, it means the last run didn't finish due to an error. This column shows the SQLERRM text message for the error.
-
-The below columns show the SUM() for pg_catalog.pg_stat_xact_user_tables column,
-giving you information on the total I/O read/write stats for each cron job execution,
-perhaps useful if you want to detect abnormalities or integrate with some monitoring tool like Munin:
-
-- seq_scan                  bigint: SUM(seq_scan)
-- seq_tup_read              bigint: SUM(seq_tup_read)
-- idx_scan                  bigint: SUM(idx_scan)
-- idx_tup_fetch             bigint: SUM(idx_tup_fetch)
-- n_tup_ins                 bigint: SUM(n_tup_ins)
-- n_tup_upd                 bigint: SUM(n_tup_upd)
-- n_tup_del                 bigint: SUM(n_tup_del)
-- n_tup_hot_upd             bigint: SUM(n_tup_hot_upd)
-
-## Installation
-
-    createuser pgcronjob
-    Shall the new role be a superuser? (y/n) n
-    Shall the new role be allowed to create databases? (y/n) n
-    Shall the new role be allowed to create more new roles? (y/n) n
-    psql -f install.sql
-    crontab pgcronjob.crontab
+Run between two specific time of day values:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _RunIfWaiting := TRUE, _RunAfterTime := now()::time+'40 seconds'::interval, _RunUntilTime := now()::time+'45 seconds'::interval);
+```

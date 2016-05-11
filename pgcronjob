@@ -10,9 +10,9 @@ use DateTime;
 
 $| = 1;
 
-my @Connect       = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintError => 0, AutoCommit => 1});
+my @Connect       = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
 
-my @LISTENConnect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, RaiseError => 1, PrintError => 0, AutoCommit => 1});
+my @LISTENConnect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
 my $LISTENName = 'cron.Dispatch()';
 
 sub SQL_Run {
@@ -26,11 +26,11 @@ my $Processes = {};
 my $ConnectTime -= time;
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
 $ConnectTime += time;
-my $Restart = $DispatchDatabaseHandle->prepare('SELECT cron.Restart()');
-my $Dispatch = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, LimitProcesses FROM cron.Dispatch()');
-my $Jobs = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.Jobs');
-my $Status = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.Status');
-my $Log = $DispatchDatabaseHandle->prepare('SELECT LogID, JobID, BatchJobState, PgBackendPID, FinishedAt, LastSQLSTATE, LastSQLERRM, n_tup_ins, n_tup_upd, n_tup_del FROM cron.Log ORDER BY LogID DESC LIMIT 10');
+my $Restart    = $DispatchDatabaseHandle->prepare('SELECT cron.Restart()');
+my $Dispatch   = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses FROM cron.Dispatch()');
+my $vJobs      = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.vJobs');
+my $vProcesses = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.vProcesses');
+my $vLog       = $DispatchDatabaseHandle->prepare('SELECT * FROM cron.vLog');
 
 my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
 $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
@@ -42,34 +42,35 @@ my $NumProcesses = 0;
 while (1) {
     if (time > $DispatchTime) {
         $Dispatch->execute();
-        my ($RunProcessID, $RunInSeconds, $LimitProcesses) = $Dispatch->fetchrow_array();
-        print "NumProcesses: $NumProcesses RunProcessID: $RunProcessID RunInSeconds: $RunInSeconds LimitProcesses: $LimitProcesses\n";
+        my ($RunProcessID, $RunInSeconds, $MaxProcesses) = $Dispatch->fetchrow_array();
+        print "NumProcesses: $NumProcesses RunProcessID: $RunProcessID RunInSeconds: $RunInSeconds MaxProcesses: $MaxProcesses\n";
         status();
         if (defined $RunProcessID) {
             $Processes->{$RunProcessID} = {
-                RunAtTime                 => time() + $RunInSeconds,
-                LimitProcesses => $LimitProcesses
+                RunAtTime    => time() + $RunInSeconds,
+                MaxProcesses => $MaxProcesses
             };
         } else {
             $DispatchTime = time+1;
         }
     }
     foreach my $ProcessID (sort {$Processes->{$a}->{RunAtTime} <=> $Processes->{$b}->{RunAtTime}} keys %{$Processes}) {
+#        print Dumper $Processes;
         my $Process = $Processes->{$ProcessID};
-        my $RunAtTime                 = \$Process->{RunAtTime};
-        my $RunASAP                   = \$Process->{RunASAP};
-        my $LimitProcesses = \$Process->{LimitProcesses};
-        my $RunDatabaseHandle         = \$Process->{DatabaseHandle};
-        my $Run                       = \$Process->{Run};
-        if (defined $$RunAtTime) {
+        my $RunAtTime         = \$Process->{RunAtTime};
+        my $RunASAP           = \$Process->{RunASAP};
+        my $MaxProcesses      = \$Process->{MaxProcesses};
+        my $RunDatabaseHandle = \$Process->{DatabaseHandle};
+        my $Run               = \$Process->{Run};
+        if ($$RunAtTime) {
             next if $$RunAtTime > time;
-            next if defined $$LimitProcesses && $$LimitProcesses ne '' && $NumProcesses > $$LimitProcesses;
+            next if defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses > $$MaxProcesses;
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
             }
             $$Run->execute();
-            delete $Process->{RunAtTime};
+            $$RunAtTime = 0;
             $NumProcesses++;
         } elsif ($$Run->pg_ready) {
             $NumProcesses--;
@@ -97,7 +98,7 @@ while (1) {
         next unless $NOTIFYName eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/;
         my $ProcessID = $NOTIFYPayload;
         print "Received NOTIFY ProcessID: $ProcessID\n";
-        if (defined $Processes->{$ProcessID}->{RunAtTime}) {
+        if ($Processes->{$ProcessID}->{RunAtTime}) {
             $Processes->{$ProcessID}->{RunAtTime} = time;
         } else {
             $Processes->{$ProcessID}->{RunASAP} = 1;
@@ -111,38 +112,38 @@ sub status {
     use Term::ReadLine;
     system('clear');
 
-    printf("ConnectTime: %.3f NumProcesses: %d Time: %s\n", $ConnectTime, $NumProcesses, DateTime->now(time_zone => 'local'));
+    printf("ConnectTime: %.0f ms NumProcesses: %d Time: %s\n", $ConnectTime*1000, $NumProcesses, DateTime->now(time_zone => 'local'));
 
     my $JobsTable = Text::ASCIITable->new({headingText => 'cron.Jobs'});
-    $JobsTable->setCols('JobID','Function','LimitProcesses','Concurrent','Enabled','RunIfWaiting','RetryOnError','IntervalAGAIN','IntervalDONE','RunAfterTimestamp','RunUntilTimestamp','RunAfterTime','RunUntilTime','RequestedBy','RequestedAt');
-    $Jobs->execute();
-    my $ret = $Jobs->fetchall_arrayref();
+    $JobsTable->setCols('JobID','Function','Processes','MaxProcesses','Concurrent','Enabled','RunIfWaiting','RetryOnError','IntervalAGAIN','IntervalDONE','RunAfterTimestamp','RunUntilTimestamp','RunAfterTime','RunUntilTime','RequestedBy','RequestedAt');
+    $vJobs->execute();
+    my $ret = $vJobs->fetchall_arrayref();
     foreach my $r (@$ret) {
         $JobsTable->addRow($r);
     }
     print $JobsTable;
 
     my $StatusTable = Text::ASCIITable->new({headingText => 'cron.Status'});
-    $StatusTable->setCols('JobID','Function','ProcessID','Running','Calls','BatchJobState','LastSQLSTATE','LastSQLERRM','PgBackendPID','procpid','waiting','current_query');
-    $Status->execute();
-    my $ret = $Status->fetchall_arrayref();
+    $StatusTable->setCols('JobID','Function','ProcessID','Status','Calls','BatchJobState','LastSQLSTATE','LastSQLERRM','PgBackendPID','procpid','waiting','current_query','duration','TotalDuration');
+    $vProcesses->execute();
+    my $ret = $vProcesses->fetchall_arrayref();
     foreach my $r (@$ret) {
         $StatusTable->addRow($r);
     }
     print $StatusTable;
 
     my $ProcessesTable = Text::ASCIITable->new({headingText => '$Processes'});
-    $ProcessesTable->setCols('ProcessID','Status','RunInSeconds','RunASAP','LimitProcesses','DatabaseHandle');
-    foreach my $ProcessID (sort keys %{$Processes}) {
+    $ProcessesTable->setCols('ProcessID','Status','RunInSeconds','RunASAP','MaxProcesses','DatabaseHandle');
+    foreach my $ProcessID (sort {$a <=> $b} keys %{$Processes}) {
         my $P = $Processes->{$ProcessID};
-        $ProcessesTable->addRow($ProcessID,defined($P->{RunAtTime}) ? 'QUEUED' : 'RUNNING',defined($P->{RunAtTime}) ? sprintf('%.2f',$P->{RunAtTime}-time()) : '',$P->{RunASAP},$P->{LimitProcesses},defined($P->{DatabaseHandle}) ? 'OPEN' : 'CLOSED');
+        $ProcessesTable->addRow($ProcessID,$P->{RunAtTime} ? 'QUEUED' : 'RUNNING',$P->{RunAtTime} ? sprintf('%.2f',$P->{RunAtTime}-time()) : '',$P->{RunASAP},$P->{MaxProcesses},defined($P->{DatabaseHandle}) ? 'OPEN' : 'CLOSED');
     }
     print $ProcessesTable;
 
     my $LogTable = Text::ASCIITable->new({headingText => 'cron.Log'});
-    $LogTable->setCols('LogID','JobID','BatchJobState','PgBackendPID','FinishedAt','LastSQLSTATE','LastSQLERRM','n_tup_ins','n_tup_upd','n_tup_del');
-    $Log->execute();
-    my $ret = $Log->fetchall_arrayref();
+    $LogTable->setCols('LogID','JobID','BatchJobState','PgBackendPID','StartTxnAt','Duration','LastSQLSTATE','LastSQLERRM','seq_scan','seq_tup_read','idx_scan','idx_tup_fetch','n_tup_ins','n_tup_upd','n_tup_del');
+    $vLog->execute();
+    my $ret = $vLog->fetchall_arrayref();
     foreach my $r (@$ret) {
         $LogTable->addRow($r);
     }
