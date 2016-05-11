@@ -55,7 +55,6 @@ while (1) {
         }
     }
     foreach my $ProcessID (sort {$Processes->{$a}->{RunAtTime} <=> $Processes->{$b}->{RunAtTime}} keys %{$Processes}) {
-#        print Dumper $Processes;
         my $Process = $Processes->{$ProcessID};
         my $RunAtTime         = \$Process->{RunAtTime};
         my $RunASAP           = \$Process->{RunASAP};
@@ -115,7 +114,7 @@ sub status {
     printf("ConnectTime: %.0f ms NumProcesses: %d Time: %s\n", $ConnectTime*1000, $NumProcesses, DateTime->now(time_zone => 'local'));
 
     my $JobsTable = Text::ASCIITable->new({headingText => 'cron.Jobs'});
-    $JobsTable->setCols('JobID','Function','Processes','MaxProcesses','Concurrent','Enabled','RunIfWaiting','RetryOnError','IntervalAGAIN','IntervalDONE','RunAfterTimestamp','RunUntilTimestamp','RunAfterTime','RunUntilTime','RequestedBy','RequestedAt');
+    $JobsTable->setCols('JobID','Function','Processes','MaxProcesses','Concurrent','Enabled','RunIfWaiting','RetryOnError','RandomInterval','IntervalAGAIN','IntervalDONE','RunAfterTimestamp','RunUntilTimestamp','RunAfterTime','RunUntilTime','RequestedBy','RequestedAt');
     $vJobs->execute();
     my $ret = $vJobs->fetchall_arrayref();
     foreach my $r (@$ret) {

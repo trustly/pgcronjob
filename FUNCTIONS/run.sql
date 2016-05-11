@@ -11,6 +11,7 @@ _BatchJobState      batchjobstate;
 _Concurrent         boolean;
 _IntervalAGAIN      interval;
 _IntervalDONE       interval;
+_RandomInterval     boolean;
 _RunIfWaiting       boolean;
 _RunAfterTimestamp  timestamptz;
 _RunUntilTimestamp  timestamptz;
@@ -47,7 +48,8 @@ SELECT
     J.RunAfterTime,
     J.RunUntilTime,
     J.IntervalAGAIN,
-    J.IntervalDONE
+    J.IntervalDONE,
+    J.RandomInterval
 INTO STRICT
     _JobID,
     _Function,
@@ -58,7 +60,8 @@ INTO STRICT
     _RunAfterTime,
     _RunUntilTime,
     _IntervalAGAIN,
-    _IntervalDONE
+    _IntervalDONE,
+    _RandomInterval
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE P.ProcessID = _ProcessID
@@ -85,6 +88,9 @@ END IF;
 IF NOT cron.No_Waiting() AND NOT _RunIfWaiting THEN
     RAISE DEBUG '% ProcessID % pg_backend_pid % : other processes are waiting, aborting', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
     RunInSeconds := extract(epoch from _IntervalAGAIN);
+    IF _RandomInterval THEN
+        RunInSeconds := RunInSeconds * random();
+    END IF;
     RETURN;
 END IF;
 
@@ -129,6 +135,9 @@ BEGIN
         RunInSeconds := extract(epoch from _IntervalDONE);
     ELSE
         RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, _BatchJobState;
+    END IF;
+    IF _RandomInterval THEN
+        RunInSeconds := RunInSeconds * random();
     END IF;
 EXCEPTION WHEN OTHERS THEN
     RAISE DEBUG 'Error when executing cron job %: SQLSTATE % SQLERRM %', _Function, SQLSTATE, SQLERRM;

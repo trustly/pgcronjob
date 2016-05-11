@@ -5,6 +5,7 @@ _MaxProcesses  integer      DEFAULT NULL,
 _Concurrent                 boolean     DEFAULT TRUE,
 _RunIfWaiting  boolean      DEFAULT FALSE,
 _RetryOnError               boolean     DEFAULT FALSE,
+_RandomInterval             boolean     DEFAULT FALSE,
 _IntervalAGAIN              interval    DEFAULT '100 ms'::interval,
 _IntervalDONE               interval    DEFAULT NULL,
 _RunAfterTimestamp          timestamptz DEFAULT NULL,
@@ -26,8 +27,8 @@ IF cron.Is_Valid_Function(_Function) IS NOT TRUE THEN
     USING HINT = 'It must return BATCHJOBSTATE and the cronjob user must have been explicitly granted EXECUTE on the function.';
 END IF;
 
-INSERT INTO cron.Jobs ( Function, Processes, MaxProcesses, Concurrent, RunIfWaiting, RetryOnError, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime)
-VALUES                (_Function,_Processes,_MaxProcesses,_Concurrent,_RunIfWaiting,_RetryOnError,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime)
+INSERT INTO cron.Jobs ( Function, Processes, MaxProcesses, Concurrent, RunIfWaiting, RetryOnError, RandomInterval, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime)
+VALUES                (_Function,_Processes,_MaxProcesses,_Concurrent,_RunIfWaiting,_RetryOnError,_RandomInterval,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime)
 RETURNING JobID INTO STRICT _NewJobID;
 
 INSERT INTO cron.Processes (JobID) SELECT _NewJobID FROM generate_series(1,_Processes);
@@ -43,6 +44,7 @@ _MaxProcesses  integer,
 _Concurrent                 boolean,
 _RunIfWaiting  boolean,
 _RetryOnError               boolean,
+_RandomInterval             boolean,
 _IntervalAGAIN              interval,
 _IntervalDONE               interval,
 _RunAfterTimestamp          timestamptz,

@@ -8,7 +8,7 @@ Run PostgreSQL user-defined database functions in a cron like fashion.
 
 ## DEMO
 
-Demo of the example in install.sql: (https://asciinema.org/a/31reltvh9jzdf43d74hvkctij)
+Demo of the example in install.sql: (https://asciinema.org/a/bwdlg8tqabais0p4g8wt2b0sx)
 
 ## DESCRIPTION
 

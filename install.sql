@@ -51,6 +51,10 @@ SELECT cron.Register('cron.Example_Random_Sleep(integer)', _Concurrent := FALSE)
 -- Please keep an eye on the "procpid" column in the cron.Status foreground view. Its value will remain the same, i.e. the connection is kept alive.
 SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '0'::interval);
 
+-- cron.Jobs.RandomInterval boolean NOT NULL DEFAULT FALSE
+-- If set to TRUE, pgcronjob will wait between 0 up to IntervalAGAIN/IntervalDONE before running again, implemented by multiplying the original value with random().
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _RunIfWaiting := TRUE, _IntervalAGAIN := '10 ms'::interval, _IntervalDONE := '30 seconds'::interval, _RandomInterval := TRUE);
+
 -- cron.Jobs.Processes integer NOT NULL DEFAULT 1
 -- By default, we just start one process per cron job, which means it will only use at most one database connection handle.
 -- Some work loads are possible to spread among multiple CPUs, such as if processing rows that don't depend on each other and can be processed in parallel.
