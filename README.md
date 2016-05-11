@@ -2,6 +2,10 @@
 
 Run PostgreSQL user-defined database functions in a cron like fashion.
 
+## DEMO
+
+Demo of the example in install.sql: (https://asciinema.org/a/31reltvh9jzdf43d74hvkctij)
+
 ## DESCRIPTION
 
 To run your functions using pgcronjob, your function must return the pgcronjob-defined ENUM type BatchJobState, which has two values, 'AGAIN' or 'DONE'.
