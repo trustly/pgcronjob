@@ -10,10 +10,10 @@ CASE RunIfWaiting WHEN TRUE THEN 'RUN_IF_WAITING' ELSE 'ABORT_IF_WAITING' END AS
 CASE RetryOnError WHEN TRUE THEN 'RETRY_ON_ERROR' ELSE 'STOP_ON_ERROR'    END AS RetryOnError,
 IntervalAGAIN,
 IntervalDONE,
-RunAfterTimestamp::timestamptz(0),
-RunUntilTimestamp::timestamptz(0),
-RunAfterTime,
-RunUntilTime,
+RunAfterTimestamp::timestamp(0),
+RunUntilTimestamp::timestamp(0),
+RunAfterTime::time(0),
+RunUntilTime::time(0),
 RequestedBy,
 RequestedAt::timestamptz(0)
 FROM cron.Jobs

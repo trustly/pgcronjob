@@ -87,7 +87,7 @@ while (1) {
             }
             if (defined $RunInSeconds) {
                 $$RunAtTime = time + ($$RunASAP ? 0 : $RunInSeconds);
-                $$RunASAP = 0;
+                $$RunASAP = undef;
             } else {
                 delete $Processes->{$ProcessID};
             }

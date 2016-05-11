@@ -2,6 +2,10 @@
 
 Run PostgreSQL user-defined database functions in a cron like fashion.
 
+## SCREENSHOT
+
+![screenshot](https://raw.githubusercontent.com/trustly/pgcronjob/master/screenshot.png)
+
 ## DEMO
 
 Demo of the example in install.sql: (https://asciinema.org/a/31reltvh9jzdf43d74hvkctij)
