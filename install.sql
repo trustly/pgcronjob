@@ -75,7 +75,7 @@ SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '10 ms'
 -- cron.Jobs.IntervalDONE interval DEFAULT NULL
 -- By default, the cron job is run again and again as long as it keeps returning AGAIN, until it returns DONE (if that ever happens, since maybe it should run forever).
 -- Setting _IntervalDONE causes the execution of the cron job to start over after that amount of time has passed.
-SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '0'::interval, _IntervalDONE := '10 seconds'::interval);
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '0'::interval, _IntervalDONE := '10 seconds'::interval, _RunIfWaiting := TRUE);
 
 -- cron.Jobs.RunIfWaiting boolean NOT NULL DEFAULT FALSE:
 -- The default is to not run if there is any PostgreSQL backend waiting for anything, not only cron job processes, but any backend.

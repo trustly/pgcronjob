@@ -3,13 +3,19 @@ SELECT
 Jobs.JobID,
 Jobs.Function,
 Processes.ProcessID,
-CASE Processes.Running WHEN TRUE THEN 'RUNNING' ELSE 'STOPPED' END AS Status,
+CASE 
+    WHEN Processes.RunAtTime <= now() THEN 'RUNNING'
+    WHEN Processes.RunAtTime > now()  THEN 'QUEUED'
+    WHEN Processes.RunAtTime IS NULL  THEN 'STOPPED'
+END
+AS Status,
+extract(epoch from Processes.RunAtTime - now())::numeric(12,2) AS RunInSeconds,
 Processes.Calls,
 Processes.BatchJobState,
 Processes.LastSQLSTATE,
 Processes.LastSQLERRM,
-Processes.PgBackendPID,
-pg_stat_activity.procpid,
+CASE WHEN EXISTS (SELECT 1 FROM pg_stat_activity WHERE procpid = Processes.PgBackendPID) THEN 'OPEN' ELSE 'CLOSED' END AS Connection,
+COALESCE(pg_stat_activity.procpid,Processes.PgBackendPID) AS procpid,
 CASE pg_stat_activity.waiting WHEN TRUE THEN 'WAITING' END AS waiting,
 pg_stat_activity.current_query,
 (now()-pg_stat_activity.query_start)::interval(0) AS duration,
