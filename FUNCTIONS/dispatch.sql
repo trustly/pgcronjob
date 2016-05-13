@@ -30,7 +30,6 @@ INTO
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE P.RunAtTime IS NULL
-AND (P.LastSQLSTATE IS NULL                  OR J.RetryOnError = TRUE)
 AND (P.BatchJobState IS DISTINCT FROM 'DONE' OR J.IntervalDONE IS NOT NULL)
 AND (J.RunUntilTimestamp > now() OR J.RunUntilTime > now()::time) IS NOT TRUE
 ORDER BY 2 NULLS LAST

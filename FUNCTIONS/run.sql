@@ -13,6 +13,7 @@ _Concurrent         boolean;
 _IntervalAGAIN      interval;
 _IntervalDONE       interval;
 _RandomInterval     boolean;
+_RetryOnError       boolean;
 _RunIfWaiting       boolean;
 _RunAfterTimestamp  timestamptz;
 _RunUntilTimestamp  timestamptz;
@@ -51,7 +52,8 @@ SELECT
     J.RunUntilTime,
     J.IntervalAGAIN,
     J.IntervalDONE,
-    J.RandomInterval
+    J.RandomInterval,
+    J.RetryOnError
 INTO STRICT
     _RunAtTime,
     _JobID,
@@ -64,7 +66,8 @@ INTO STRICT
     _RunUntilTime,
     _IntervalAGAIN,
     _IntervalDONE,
-    _RandomInterval
+    _RandomInterval,
+    _RetryOnError
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 WHERE P.ProcessID = _ProcessID
@@ -146,6 +149,12 @@ EXCEPTION WHEN OTHERS THEN
     RAISE DEBUG 'Error when executing cron job %: SQLSTATE % SQLERRM %', _Function, SQLSTATE, SQLERRM;
     _LastSQLSTATE := SQLSTATE;
     _LastSQLERRM  := SQLERRM;
+    IF _RetryOnError THEN
+        _RunAtTime := now() + _IntervalAGAIN * CASE WHEN _RandomInterval THEN random() ELSE 1 END;
+    ELSE
+        _RunAtTime := NULL;
+    END IF;
+    RunInSeconds := extract(epoch from _RunAtTime-now());
 END;
 
 SELECT
