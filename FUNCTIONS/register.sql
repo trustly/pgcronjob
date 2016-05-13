@@ -19,7 +19,6 @@ SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
 _JobID integer;
-_NewJobID integer;
 _IdenticalConfiguration boolean;
 BEGIN
 IF cron.Is_Valid_Function(_Function) IS NOT TRUE THEN
@@ -29,9 +28,9 @@ END IF;
 
 INSERT INTO cron.Jobs ( Function, Processes, MaxProcesses, Concurrent, RunIfWaiting, RetryOnError, RandomInterval, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime)
 VALUES                (_Function,_Processes,_MaxProcesses,_Concurrent,_RunIfWaiting,_RetryOnError,_RandomInterval,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime)
-RETURNING JobID INTO STRICT _NewJobID;
+RETURNING JobID INTO STRICT _JobID;
 
-INSERT INTO cron.Processes (JobID) SELECT _NewJobID FROM generate_series(1,_Processes);
+INSERT INTO cron.Processes (JobID) SELECT _JobID FROM generate_series(1,_Processes);
 
 RETURN _JobID;
 END;
