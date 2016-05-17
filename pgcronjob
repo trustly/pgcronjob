@@ -4,7 +4,7 @@ use warnings;
 
 use DBI;
 use DBD::Pg;
-use Time::HiRes qw(time);
+use Time::HiRes qw(time sleep);
 use Data::Dumper;
 use DateTime;
 
@@ -57,8 +57,9 @@ while (1) {
         my $RunDatabaseHandle = \$Process->{DatabaseHandle};
         my $Run               = \$Process->{Run};
         if ($$RunAtTime) {
-            next if $$RunAtTime > time;
-            next if defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses > $$MaxProcesses;
+            if ($$RunAtTime > time || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses > $$MaxProcesses)) {
+                next;
+            }
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
