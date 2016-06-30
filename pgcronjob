@@ -98,4 +98,5 @@ while (1) {
             $Processes->{$ProcessID}->{RunASAP} = 1;
         }
     }
+    sleep(0.001); # sleep 1 ms to avoid 100% CPU usage
 }
