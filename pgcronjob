@@ -26,24 +26,51 @@ my $Processes = {};
 my $ConnectTime -= time;
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
 $ConnectTime += time;
-my $Restart    = $DispatchDatabaseHandle->prepare('SELECT cron.Restart()');
-my $Dispatch   = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses FROM cron.Dispatch()');
+my $Restart    = $DispatchDatabaseHandle->prepare('SELECT cron.Restart(_Force := ?)');
+my $Dispatch   = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID FROM cron.Dispatch()');
 
 my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
 $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
 
-$Restart->execute();
+my $Force = 0;
+while (1) {
+    $Restart->execute($Force);
+    my ($OK) = $Restart->fetchrow_array();
+    if ($OK) {
+        # all cron.Run() processes have now been cancelled/terminated
+        last;
+    } else {
+        print "Waiting for old cron processes to be " . ($Force ? 'terminated' : 'cancelled') . "\n";
+        $Force = 1;
+        sleep(1); # wait for processes to be cancelled/terminated
+    }
+}
+
+print "PgCronJob is now running\n";
 
 my $DispatchTime = time;
-my $NumProcesses = 0;
+my $NumProcesses = {};
+
+sub DumpState {
+    print "ConnectTime: $ConnectTime\n";
+    print "DispatchTime: $DispatchTime\n";
+    print "NumProcesses:\n";
+    print Dumper $NumProcesses;
+    print "Processes:\n";
+    print Dumper $Processes;
+}
+
+$SIG{HUP} = \&DumpState;
+
 while (1) {
     if (time > $DispatchTime) {
         $Dispatch->execute();
-        my ($RunProcessID, $RunInSeconds, $MaxProcesses) = $Dispatch->fetchrow_array();
+        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID) = $Dispatch->fetchrow_array();
         if (defined $RunProcessID) {
             $Processes->{$RunProcessID} = {
-                RunAtTime    => time() + $RunInSeconds,
-                MaxProcesses => $MaxProcesses
+                RunAtTime        => time() + $RunInSeconds,
+                MaxProcesses     => $MaxProcesses,
+                ConnectionPoolID => $ConnectionPoolID
             };
         } else {
             $DispatchTime = time+1;
@@ -54,10 +81,14 @@ while (1) {
         my $RunAtTime         = \$Process->{RunAtTime};
         my $RunASAP           = \$Process->{RunASAP};
         my $MaxProcesses      = \$Process->{MaxProcesses};
+        my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
         my $RunDatabaseHandle = \$Process->{DatabaseHandle};
         my $Run               = \$Process->{Run};
+        if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
+            $NumProcesses->{$$ConnectionPoolID} = 0;
+        }
         if ($$RunAtTime) {
-            if ($$RunAtTime > time || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses > $$MaxProcesses)) {
+            if ($$RunAtTime > time || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
                 next;
             }
             unless (defined $$RunDatabaseHandle) {
@@ -66,9 +97,13 @@ while (1) {
             }
             $$Run->execute();
             $$RunAtTime = 0;
-            $NumProcesses++;
+            if (defined $$ConnectionPoolID) {
+                $NumProcesses->{$$ConnectionPoolID}++;
+            }
         } elsif ($$Run->pg_ready) {
-            $NumProcesses--;
+            if (defined $$ConnectionPoolID) {
+                $NumProcesses->{$$ConnectionPoolID}--;
+            }
             my $Rows = $$Run->pg_result;
             die "Unexpected number of rows: $Rows" unless $Rows == 1;
             my ($RunInSeconds) = $$Run->fetchrow_array();

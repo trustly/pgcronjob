@@ -4,34 +4,36 @@ LANGUAGE plpgsql
 SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
-_OK                 boolean;
-_JobID              integer;
-_Function           regprocedure;
-_RunAtTime          timestamptz;
-_BatchJobState      batchjobstate;
-_Concurrent         boolean;
-_IntervalAGAIN      interval;
-_IntervalDONE       interval;
-_RandomInterval     boolean;
-_RetryOnError       boolean;
-_RunIfWaiting       boolean;
-_RunAfterTimestamp  timestamptz;
-_RunUntilTimestamp  timestamptz;
-_RunAfterTime       interval;
-_RunUntilTime       interval;
-_LastRunStartedAt   timestamptz;
-_LastRunFinishedAt  timestamptz;
-_LastSQLSTATE       text;
-_LastSQLERRM        text;
-_seq_scan           bigint;
-_seq_tup_read       bigint;
-_idx_scan           bigint;
-_idx_tup_fetch      bigint;
-_n_tup_ins          bigint;
-_n_tup_upd          bigint;
-_n_tup_del          bigint;
-_n_tup_hot_upd      bigint;
-_SQL                text;
+_OK                      boolean;
+_JobID                   integer;
+_Function                regprocedure;
+_RunAtTime               timestamptz;
+_BatchJobState           batchjobstate;
+_Concurrent              boolean;
+_IntervalAGAIN           interval;
+_IntervalDONE            interval;
+_RandomInterval          boolean;
+_RetryOnError            boolean;
+_RunIfWaiting            boolean;
+_RunAfterTimestamp       timestamptz;
+_RunUntilTimestamp       timestamptz;
+_RunAfterTime            interval;
+_RunUntilTime            interval;
+_LastRunStartedAt        timestamptz;
+_LastRunFinishedAt       timestamptz;
+_LastSQLSTATE            text;
+_LastSQLERRM             text;
+_seq_scan                bigint;
+_seq_tup_read            bigint;
+_idx_scan                bigint;
+_idx_tup_fetch           bigint;
+_n_tup_ins               bigint;
+_n_tup_upd               bigint;
+_n_tup_del               bigint;
+_n_tup_hot_upd           bigint;
+_SQL                     text;
+_ConnectionPoolID        integer;
+_CycleFirstProcessID integer;
 BEGIN
 
 SET LOCAL application_name = 'cron.Run(integer)';
@@ -53,7 +55,9 @@ SELECT
     J.IntervalAGAIN,
     J.IntervalDONE,
     J.RandomInterval,
-    J.RetryOnError
+    J.RetryOnError,
+    J.ConnectionPoolID,
+    CP.CycleFirstProcessID
 INTO STRICT
     _RunAtTime,
     _JobID,
@@ -67,9 +71,12 @@ INTO STRICT
     _IntervalAGAIN,
     _IntervalDONE,
     _RandomInterval,
-    _RetryOnError
+    _RetryOnError,
+    _ConnectionPoolID,
+    _CycleFirstProcessID
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
+LEFT JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolID)
 WHERE P.ProcessID = _ProcessID
 FOR UPDATE OF P;
 
@@ -100,6 +107,14 @@ IF NOT cron.No_Waiting() AND NOT _RunIfWaiting THEN
     UPDATE cron.Processes SET RunAtTime = _RunAtTime WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;
     RunInSeconds := extract(epoch from _RunAtTime-now());
     RETURN;
+END IF;
+
+IF _CycleFirstProcessID = _ProcessID THEN
+    UPDATE cron.ConnectionPools SET
+        LastCycleAt         = ThisCycleAt,
+        ThisCycleAt         = clock_timestamp()
+    WHERE ConnectionPoolID = _ConnectionPoolID
+    RETURNING TRUE INTO STRICT _OK;
 END IF;
 
 UPDATE cron.Processes SET

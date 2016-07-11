@@ -3,6 +3,8 @@ SELECT
 Jobs.JobID,
 Jobs.Function,
 Processes.ProcessID,
+format('%s(%s)',ConnectionPools.Name,Jobs.ConnectionPoolID) AS ConnectionPool,
+ConnectionPools.MaxProcesses,
 CASE 
     WHEN Processes.RunAtTime <= now() THEN 'RUNNING'
     WHEN Processes.RunAtTime > now()  THEN 'QUEUED'
@@ -22,6 +24,7 @@ pg_stat_activity.current_query,
 (Processes.LastRunFinishedAt-Processes.FirstRunStartedAt)::interval(0) AS TotalDuration
 FROM cron.Processes
 INNER JOIN cron.Jobs ON (Jobs.JobID = Processes.JobID)
+LEFT JOIN cron.ConnectionPools ON (ConnectionPools.ConnectionPoolID = cron.Jobs.ConnectionPoolID)
 LEFT JOIN pg_stat_activity ON (pg_stat_activity.current_query = format('SELECT RunInSeconds FROM cron.Run(_ProcessID := %s)',Processes.ProcessID))
 ORDER BY Jobs.JobID, Jobs.Function, Processes.ProcessID;
 

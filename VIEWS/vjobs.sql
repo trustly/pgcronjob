@@ -3,7 +3,6 @@ SELECT
 JobID,
 Function,
 Processes,
-CASE WHEN MaxProcesses IS NULL THEN 'NO_LIMIT'       ELSE MaxProcesses::text END AS MaxProcesses,
 CASE Concurrent     WHEN TRUE THEN 'CONCURRENT'      ELSE 'RUN_ALONE'        END AS Concurrent,
 CASE Enabled        WHEN TRUE THEN 'ENABLED'         ELSE 'DISABLED'         END AS Enabled,
 CASE RunIfWaiting   WHEN TRUE THEN 'RUN_IF_WAITING'  ELSE 'ABORT_IF_WAITING' END AS RunIfWaiting,

@@ -2,7 +2,6 @@ CREATE TABLE cron.Jobs (
 JobID                     serial       NOT NULL,
 Function                  regprocedure NOT NULL,
 Processes                 integer      NOT NULL DEFAULT 1,
-MaxProcesses              integer      DEFAULT NULL,
 Concurrent                boolean      NOT NULL DEFAULT TRUE, -- if set to FALSE, we will protect against concurrent execution using pg_try_advisory_xact_lock()
 Enabled                   boolean      NOT NULL DEFAULT TRUE,
 RunIfWaiting              boolean      NOT NULL DEFAULT FALSE,
@@ -16,8 +15,8 @@ RunAfterTime              time         DEFAULT NULL,
 RunUntilTime              time         DEFAULT NULL,
 RequestedBy               text         NOT NULL DEFAULT session_user,
 RequestedAt               timestamptz  NOT NULL DEFAULT now(),
-PRIMARY KEY (JobID),
-CHECK(MaxProcesses >= 0)
+ConnectionPoolID          integer      DEFAULT NULL REFERENCES cron.ConnectionPools(ConnectionPoolID),
+PRIMARY KEY (JobID)
 );
 
 ALTER TABLE cron.Jobs OWNER TO pgcronjob;

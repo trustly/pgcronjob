@@ -61,12 +61,17 @@ SELECT cron.Register('cron.Example_No_Sleep(integer)', _Processes := 2);
 
 Don't limit how many cron job functions that can be running in parallell (DEFAULT):
 ```
-SELECT cron.Register('cron.Example_No_Sleep(integer)', _MaxProcesses := NULL);
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _ConnectionPool := NULL);
 ```
 
-Only run cron job if there is at most 5 other cron job processes running:
+Create a connection pool to limit the number of concurrently running processes:
 ```
-SELECT cron.Register('cron.Example_No_Sleep(integer)', _MaxProcesses := 5);
+SELECT cron.New_Connection_Pool(_Name := 'My test pool', _MaxProcesses := 2);
+```
+
+Create a connection pool to limit the number of concurrently running processes:
+```
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _ConnectionPool := 'My test pool');
 ```
 
 Run until cron job returns DONE, then never run again (DEFAULT):

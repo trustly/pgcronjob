@@ -6,6 +6,7 @@ CREATE TYPE public.batchjobstate AS ENUM (
     'DONE'
 );
 CREATE SCHEMA cron;
+\ir TABLES/connectionpools.sql
 \ir TABLES/jobs.sql
 \ir TABLES/processes.sql
 \ir TABLES/log.sql
@@ -17,6 +18,7 @@ CREATE SCHEMA cron;
 \ir FUNCTIONS/run.sql
 \ir FUNCTIONS/dispatch.sql
 \ir FUNCTIONS/restart.sql
+\ir FUNCTIONS/new_connection_pool.sql
 \ir VIEWS/vjobs.sql
 \ir VIEWS/vprocesses.sql
 \ir VIEWS/vlog.sql
@@ -61,16 +63,25 @@ SELECT cron.Register('cron.Example_No_Sleep(integer)', _RunIfWaiting := TRUE, _I
 -- Simulate starting 2 processes. We'll reuse the Example_No_Sleep() function.
 SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '10 ms'::interval, _Processes := 2);
 
--- cron.Jobs.MaxProcesses integer DEFAULT NULL:
--- Only run cron job if there is at most [MaxProcesses] other cron job processes running, not only for our JobID, but globally for all JobIDs.
--- 0 means only run if no other cron job processes are running.
+-- cron.Jobs.ConnectionPoolID integer DEFAULT NULL:
+-- Only run cron job if there is at most [MaxProcesses] other cron job processes running with the same ConnectionPoolID.
 -- NULL means allow it to run regardless of how many other cron jobs are running.
--- Let's start some more Example_No_Sleep() processes, but these 4 will only run if no other cron jobs at all are running:
-SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '10 ms'::interval, _Processes := 2, _MaxProcesses := 0);
+-- Let's register 9 cron jobs to share the same connection pool of max 3 processes.
+SELECT cron.New_Connection_Pool(_Name := 'Small test pool', _MaxProcesses := 3);
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _IntervalAGAIN := '100 ms'::interval, _RandomInterval := TRUE, _ConnectionPool := 'Small test pool');
 
 -- Setting _MaxProcesses to some reasonably high value is probably always a good idea, to prevent process starvation.
 -- In the example below, _MaxProcesses := 100 has no effect, since we will never run that many processes anyway:
-SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '10 ms'::interval, _Processes := 2, _MaxProcesses := 100);
+SELECT cron.New_Connection_Pool(_Name := 'Big test pool', _MaxProcesses := 100);
+SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalAGAIN := '10 ms'::interval, _Processes := 2, _ConnectionPool := 'Big test pool');
 
 -- cron.Jobs.IntervalDONE interval DEFAULT NULL
 -- By default, the cron job is run again and again as long as it keeps returning AGAIN, until it returns DONE (if that ever happens, since maybe it should run forever).
