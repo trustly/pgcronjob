@@ -6,6 +6,7 @@ CREATE TYPE public.batchjobstate AS ENUM (
     'DONE'
 );
 CREATE SCHEMA cron;
+\ir FUNCTIONS/pg_stat_activity_portable.sql
 \ir TABLES/connectionpools.sql
 \ir TABLES/jobs.sql
 \ir TABLES/processes.sql
