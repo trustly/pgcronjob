@@ -26,25 +26,31 @@ my $Processes = {};
 my $ConnectTime -= time;
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
 $ConnectTime += time;
-my $Restart    = $DispatchDatabaseHandle->prepare('SELECT cron.Restart(_Force := ?)');
-my $Dispatch   = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID FROM cron.Dispatch()');
+my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
+my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := ?)');
+my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
+my $Waiting_PIDs           = $DispatchDatabaseHandle->prepare('SELECT cron.Waiting_PIDs()');
+my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, KillIfWaiting FROM cron.Dispatch()');
+
+unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
+    die "Not connected as the 'pgcronjob' database user!";
+}
+
+while (1) {
+    $Terminate_All_Backends->execute();
+    my ($OK) = $Terminate_All_Backends->fetchrow_array();
+    if ($OK) {
+        # all cron.Run() processes have now been terminated
+        last;
+    } else {
+        print "Waiting for old cron processes to be terminated\n";
+        sleep(1); # wait for processes to be terminated
+    }
+}
+$Reset_RunAtTime->execute();
 
 my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
 $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
-
-my $Force = 0;
-while (1) {
-    $Restart->execute($Force);
-    my ($OK) = $Restart->fetchrow_array();
-    if ($OK) {
-        # all cron.Run() processes have now been cancelled/terminated
-        last;
-    } else {
-        print "Waiting for old cron processes to be " . ($Force ? 'terminated' : 'cancelled') . "\n";
-        $Force = 1;
-        sleep(1); # wait for processes to be cancelled/terminated
-    }
-}
 
 print "PgCronJob is now running\n";
 
@@ -65,15 +71,35 @@ $SIG{HUP} = \&DumpState;
 while (1) {
     if (time > $DispatchTime) {
         $Dispatch->execute();
-        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID) = $Dispatch->fetchrow_array();
+        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID, $KillIfWaiting) = $Dispatch->fetchrow_array();
         if (defined $RunProcessID) {
             $Processes->{$RunProcessID} = {
                 RunAtTime        => time() + $RunInSeconds,
                 MaxProcesses     => $MaxProcesses,
-                ConnectionPoolID => $ConnectionPoolID
+                ConnectionPoolID => $ConnectionPoolID,
+                KillIfWaiting    => $KillIfWaiting
             };
         } else {
             $DispatchTime = time+1;
+        }
+        $Waiting_PIDs->execute();
+        my ($PIDs) = $Waiting_PIDs->fetchrow_array();
+        if ($PIDs) {
+            sleep(1);
+            $Waiting_PIDs->execute();
+            my ($StillWaitingPIDs) = $Waiting_PIDs->fetchrow_array();
+            if (map { my $PID = $_; (grep {$_ eq $PID} @$StillWaitingPIDs) } @$PIDs) {
+                foreach my $ProcessID (keys %{$Processes}) {
+                    if ($Processes->{$ProcessID}->{KillIfWaiting} && $Processes->{$ProcessID}->{PgBackendPID}) {
+                        $Terminate_Backend->execute($Processes->{$ProcessID}->{PgBackendPID});
+                        if ($Processes->{$ProcessID}->{DatabaseHandle}) {
+                            $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
+                            $Processes->{$ProcessID}->{DatabaseHandle} = undef;
+                        }
+                        delete $Processes->{$ProcessID};
+                    }
+                }
+            }
         }
     }
     foreach my $ProcessID (sort {$Processes->{$a}->{RunAtTime} <=> $Processes->{$b}->{RunAtTime}} keys %{$Processes}) {
@@ -84,6 +110,7 @@ while (1) {
         my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
         my $RunDatabaseHandle = \$Process->{DatabaseHandle};
         my $Run               = \$Process->{Run};
+        my $KillIfWaiting     = \$Process->{KillIfWaiting};
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
@@ -93,6 +120,7 @@ while (1) {
             }
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
+                $Process->{PgBackendPID} = ${$RunDatabaseHandle}->{pg_pid};
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
             }
             $$Run->execute();

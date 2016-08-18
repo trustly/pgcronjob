@@ -16,6 +16,7 @@ RunUntilTime              time         DEFAULT NULL,
 RequestedBy               text         NOT NULL DEFAULT session_user,
 RequestedAt               timestamptz  NOT NULL DEFAULT now(),
 ConnectionPoolID          integer      DEFAULT NULL REFERENCES cron.ConnectionPools(ConnectionPoolID),
+KillIfWaiting             boolean      NOT NULL DEFAULT FALSE,
 PRIMARY KEY (JobID)
 );
 

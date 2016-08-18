@@ -79,6 +79,11 @@ Run until cron job returns DONE, then never run again (DEFAULT):
 SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalDONE := NULL);
 ```
 
+Kill the job if any other PostgreSQL backend processes have been waiting for at least a second:
+```
+SELECT cron.Register('cron.Example_Random_Sleep(integer)', _KillIfWaiting := TRUE);
+```
+
 Run until cron job returns DONE, then run again after 60 seconds:
 ```
 SELECT cron.Register('cron.Example_No_Sleep(integer)', _IntervalDONE := '60 seconds'::interval);

@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION cron.Dispatch(OUT RunProcessID integer, OUT RunInSeconds numeric, OUT MaxProcesses integer, OUT ConnectionPoolID integer)
+CREATE OR REPLACE FUNCTION cron.Dispatch(OUT RunProcessID integer, OUT RunInSeconds numeric, OUT MaxProcesses integer, OUT ConnectionPoolID integer, OUT KillIfWaiting boolean)
 RETURNS RECORD
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
@@ -23,12 +23,14 @@ SELECT
         ELSE P.LastRunFinishedAt + CASE WHEN P.BatchJobState = 'DONE' THEN J.IntervalDONE ELSE J.IntervalAGAIN END
     END,
     CP.MaxProcesses,
-    J.ConnectionPoolID
+    J.ConnectionPoolID,
+    J.KillIfWaiting
 INTO
     RunProcessID,
     _RunAtTime,
     MaxProcesses,
-    ConnectionPoolID
+    ConnectionPoolID,
+    KillIfWaiting
 FROM cron.Jobs AS J
 INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 LEFT JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolID)
