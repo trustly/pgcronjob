@@ -45,7 +45,7 @@ END IF;
 SELECT
     P.RunAtTime,
     J.JobID,
-    J.Function,
+    J.Function::regprocedure,
     J.Concurrent,
     J.RunIfWaiting,
     J.RunAfterTimestamp,

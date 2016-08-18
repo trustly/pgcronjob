@@ -6,7 +6,6 @@ AS $FUNC$
 DECLARE
 _OK        boolean;
 _JobID     integer;
-_Function  regprocedure;
 _RunAtTime timestamptz;
 BEGIN
 
@@ -48,7 +47,7 @@ END IF;
 RunInSeconds := extract(epoch from _RunAtTime - now());
 
 UPDATE cron.Processes SET RunAtTime = _RunAtTime WHERE ProcessID = RunProcessID AND RunAtTime IS NULL RETURNING TRUE INTO STRICT _OK;
-RAISE DEBUG '% pg_backend_pid % : spawn new process -> [JobID % Function % RunAtTime % RunProcessID % RunInSeconds % MaxProcesses % ConnectionPoolID %]', clock_timestamp()::timestamp(3), pg_backend_pid(), _JobID, _Function, _RunAtTime, RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID;
+RAISE DEBUG '% pg_backend_pid % : spawn new process -> [JobID % RunAtTime % RunProcessID % RunInSeconds % MaxProcesses % ConnectionPoolID %]', clock_timestamp()::timestamp(3), pg_backend_pid(), _JobID, _RunAtTime, RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID;
 RETURN;
 
 END;

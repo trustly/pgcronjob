@@ -1,6 +1,6 @@
 CREATE TABLE cron.Jobs (
 JobID                     serial       NOT NULL,
-Function                  regprocedure NOT NULL,
+Function                  text         NOT NULL,
 Processes                 integer      NOT NULL DEFAULT 1,
 Concurrent                boolean      NOT NULL DEFAULT TRUE, -- if set to FALSE, we will protect against concurrent execution using pg_try_advisory_xact_lock()
 Enabled                   boolean      NOT NULL DEFAULT TRUE,

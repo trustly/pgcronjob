@@ -34,8 +34,8 @@ IF _ConnectionPool IS NOT NULL THEN
     SELECT ConnectionPoolID, CycleFirstProcessID INTO STRICT _ConnectionPoolID, _CycleFirstProcessID FROM cron.ConnectionPools WHERE Name = _ConnectionPool;
 END IF;
 
-INSERT INTO cron.Jobs ( Function, Processes, Concurrent, RunIfWaiting, RetryOnError, RandomInterval, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, ConnectionPoolID,  KillIfWaiting)
-VALUES                (_Function,_Processes,_Concurrent,_RunIfWaiting,_RetryOnError,_RandomInterval,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_ConnectionPoolID, _KillIfWaiting)
+INSERT INTO cron.Jobs ( Function,       Processes, Concurrent, RunIfWaiting, RetryOnError, RandomInterval, IntervalAGAIN, IntervalDONE, RunAfterTimestamp, RunUntilTimestamp, RunAfterTime, RunUntilTime, ConnectionPoolID,  KillIfWaiting)
+VALUES                (_Function::text,_Processes,_Concurrent,_RunIfWaiting,_RetryOnError,_RandomInterval,_IntervalAGAIN,_IntervalDONE,_RunAfterTimestamp,_RunUntilTimestamp,_RunAfterTime,_RunUntilTime,_ConnectionPoolID, _KillIfWaiting)
 RETURNING JobID INTO STRICT _JobID;
 
 INSERT INTO cron.Processes (JobID) SELECT _JobID FROM generate_series(1,_Processes);
