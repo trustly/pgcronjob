@@ -20,3 +20,6 @@ END;
 $FUNC$;
 
 ALTER FUNCTION cron.Terminate_All_Backends() OWNER TO sudo;
+
+REVOKE ALL ON FUNCTION cron.Terminate_All_Backends() FROM PUBLIC;
+GRANT  ALL ON FUNCTION cron.Terminate_All_Backends() TO pgcronjob;

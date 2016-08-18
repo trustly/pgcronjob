@@ -19,3 +19,6 @@ END;
 $FUNC$;
 
 ALTER FUNCTION cron.Waiting_PIDs() OWNER TO sudo;
+
+REVOKE ALL ON FUNCTION cron.Waiting_PIDs() FROM PUBLIC;
+GRANT  ALL ON FUNCTION cron.Waiting_PIDs() TO pgcronjob;
