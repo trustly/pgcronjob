@@ -21,7 +21,8 @@ COALESCE(pg_stat_activity.pid,Processes.PgBackendPID) AS procpid,
 CASE pg_stat_activity.waiting WHEN TRUE THEN 'WAITING' END AS waiting,
 pg_stat_activity.query,
 (now()-pg_stat_activity.query_start)::interval(0) AS duration,
-(Processes.LastRunFinishedAt-Processes.FirstRunStartedAt)::interval(0) AS TotalDuration
+(Processes.LastRunFinishedAt-Processes.FirstRunStartedAt)::interval(0) AS TotalDuration,
+(now()-cron.Processes.LastRunFinishedAt)::interval(0) AS LastRun
 FROM cron.Processes
 INNER JOIN cron.Jobs ON (Jobs.JobID = Processes.JobID)
 LEFT JOIN cron.ConnectionPools ON (ConnectionPools.ConnectionPoolID = cron.Jobs.ConnectionPoolID)
