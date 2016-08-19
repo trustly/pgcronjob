@@ -91,6 +91,7 @@ while (1) {
             if (map { my $PID = $_; (grep {$_ eq $PID} @$StillWaitingPIDs) } @$PIDs) {
                 foreach my $ProcessID (keys %{$Processes}) {
                     if ($Processes->{$ProcessID}->{KillIfWaiting} && $Processes->{$ProcessID}->{PgBackendPID}) {
+                        print "Other pg backend(s) have been waiting for more than a second. Killing ProcessID $ProcessID with pg backend PID $Processes->{$ProcessID}->{PgBackendPID}\n";
                         $Terminate_Backend->execute($Processes->{$ProcessID}->{PgBackendPID});
                         if ($Processes->{$ProcessID}->{DatabaseHandle}) {
                             $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
