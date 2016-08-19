@@ -21,6 +21,11 @@ sub SQL_Run {
     return "SELECT RunInSeconds FROM cron.Run(_ProcessID := $ProcessID)";
 }
 
+sub tprint {
+    my $msg = shift;
+    print DateTime->now->datetime() . ' ' . $msg . "\n";
+}
+
 my $Processes = {};
 
 my $ConnectTime -= time;
@@ -43,7 +48,7 @@ while (1) {
         # all cron.Run() processes have now been terminated
         last;
     } else {
-        print "Waiting for old cron processes to be terminated\n";
+        tprint("Waiting for old cron processes to be terminated");
         sleep(1); # wait for processes to be terminated
     }
 }
@@ -52,19 +57,20 @@ $Reset_RunAtTime->execute();
 my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
 $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
 
-print "PgCronJob is now running\n";
+tprint("PgCronJob is now running");
 
 my $DispatchTime = time;
 my $NumProcesses = {};
 my $WaitingPIDsSeconds = {};
 
 sub DumpState {
-    print "ConnectTime: $ConnectTime\n";
-    print "DispatchTime: $DispatchTime\n";
-    print "NumProcesses:\n";
-    print Dumper $NumProcesses;
-    print "Processes:\n";
-    print Dumper $Processes;
+    tprint("ConnectTime: $ConnectTime\n"
+        . "DispatchTime: $DispatchTime\n"
+        . "NumProcesses:\n"
+        . Dumper($NumProcesses)
+        . "Processes:\n"
+        . Dumper($Processes)
+    );
 }
 
 $SIG{HUP} = \&DumpState;
@@ -99,11 +105,11 @@ while (1) {
             }
         }
         if (%$WaitingPIDsSeconds) {
-            print "Waiting pg backends: " . join(', ', map{'[PID ' . $_ . ' ' . $WaitingPIDsSeconds->{$_} . ' secs]'} keys %$WaitingPIDsSeconds) . "\n";
+            tprint("Waiting pg backends: " . join(', ', map{'[PID ' . $_ . ' ' . $WaitingPIDsSeconds->{$_} . ' secs]'} keys %$WaitingPIDsSeconds));
             foreach my $ProcessID (keys %{$Processes}) {
                 next unless (defined $Processes->{$ProcessID}->{KillIfWaiting} && defined $Processes->{$ProcessID}->{PgBackendPID});
                 if ($WaitingMaxSeconds > $Processes->{$ProcessID}->{KillIfWaiting}) {
-                    print "Backends have been waiting for $WaitingMaxSeconds seconds which is longer than the limit of $Processes->{$ProcessID}->{KillIfWaiting} seconds, killing ProcessID $ProcessID with pg backend PID $Processes->{$ProcessID}->{PgBackendPID}\n";
+                    tprint("Backends have been waiting for $WaitingMaxSeconds seconds which is longer than the limit of $Processes->{$ProcessID}->{KillIfWaiting} seconds, killing ProcessID $ProcessID with pg backend PID $Processes->{$ProcessID}->{PgBackendPID}");
                     $Terminate_Backend->execute($Processes->{$ProcessID}->{PgBackendPID});
                     if ($Processes->{$ProcessID}->{DatabaseHandle}) {
                         $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
@@ -165,9 +171,9 @@ while (1) {
     }
     while (my $NOTIFY = $LISTENDatabaseHandle->pg_notifies) {
         my ($NOTIFYName, $NOTIFYPID, $NOTIFYPayload) = @$NOTIFY;
-        print "Received notification: $NOTIFYName, $NOTIFYPID, $NOTIFYPayload\n";
         next unless $NOTIFYName eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/;
         my $ProcessID = $NOTIFYPayload;
+        next unless defined $Processes->{$ProcessID};
         if ($Processes->{$ProcessID}->{RunAtTime}) {
             $Processes->{$ProcessID}->{RunAtTime} = time;
         } else {
