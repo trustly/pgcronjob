@@ -153,6 +153,7 @@ while (1) {
     }
     while (my $NOTIFY = $LISTENDatabaseHandle->pg_notifies) {
         my ($NOTIFYName, $NOTIFYPID, $NOTIFYPayload) = @$NOTIFY;
+        print "Received notification: $NOTIFYName, $NOTIFYPID, $NOTIFYPayload\n";
         next unless $NOTIFYName eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/;
         my $ProcessID = $NOTIFYPayload;
         if ($Processes->{$ProcessID}->{RunAtTime}) {
