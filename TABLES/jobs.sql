@@ -16,7 +16,7 @@ RunUntilTime              time         DEFAULT NULL,
 RequestedBy               text         NOT NULL DEFAULT session_user,
 RequestedAt               timestamptz  NOT NULL DEFAULT now(),
 ConnectionPoolID          integer      DEFAULT NULL REFERENCES cron.ConnectionPools(ConnectionPoolID),
-KillIfWaiting             boolean      NOT NULL DEFAULT FALSE,
+KillIfWaiting             integer      DEFAULT NULL, -- seconds to wait before killing, or NULL to disable auto-killing
 PRIMARY KEY (JobID)
 );
 

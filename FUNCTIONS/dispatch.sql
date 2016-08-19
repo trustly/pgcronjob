@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION cron.Dispatch(OUT RunProcessID integer, OUT RunInSeconds numeric, OUT MaxProcesses integer, OUT ConnectionPoolID integer, OUT KillIfWaiting boolean)
+CREATE OR REPLACE FUNCTION cron.Dispatch(OUT RunProcessID integer, OUT RunInSeconds numeric, OUT MaxProcesses integer, OUT ConnectionPoolID integer, OUT KillIfWaiting integer)
 RETURNS RECORD
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp

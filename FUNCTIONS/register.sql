@@ -12,7 +12,7 @@ _RunUntilTimestamp          timestamptz DEFAULT NULL,
 _RunAfterTime               time        DEFAULT NULL,
 _RunUntilTime               time        DEFAULT NULL,
 _ConnectionPool             text        DEFAULT NULL,
-_KillIfWaiting              boolean     DEFAULT FALSE
+_KillIfWaiting              integer     DEFAULT NULL
 )
 RETURNS integer
 LANGUAGE plpgsql
@@ -66,5 +66,5 @@ _RunUntilTimestamp          timestamptz,
 _RunAfterTime               time,
 _RunUntilTime               time,
 _ConnectionPool             text,
-_KillIfWaiting              boolean
+_KillIfWaiting              integer
 ) OWNER TO pgcronjob;
