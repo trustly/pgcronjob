@@ -23,7 +23,7 @@ sub SQL_Run {
 
 sub tprint {
     my $msg = shift;
-    print DateTime->now->datetime() . ' ' . $msg . "\n";
+    print DateTime->now(time_zone => 'local')->datetime() . ' ' . $msg . "\n";
 }
 
 my $Processes = {};
@@ -35,6 +35,7 @@ my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Termi
 my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := ?)');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
 my $Waiting_PIDs           = $DispatchDatabaseHandle->prepare('SELECT cron.Waiting_PIDs()');
+my $Log_Waiting            = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Waiting(_NumPIDs := ?, _MaxSeconds := ?)');
 my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, KillIfWaiting FROM cron.Dispatch()');
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
@@ -106,6 +107,7 @@ while (1) {
         }
         if (%$WaitingPIDsSeconds) {
             tprint("Waiting pg backends: " . join(', ', map{'[PID ' . $_ . ' ' . $WaitingPIDsSeconds->{$_} . ' secs]'} keys %$WaitingPIDsSeconds));
+            $Log_Waiting->execute(scalar keys %$WaitingPIDsSeconds, $WaitingMaxSeconds);
             foreach my $ProcessID (keys %{$Processes}) {
                 next unless (defined $Processes->{$ProcessID}->{KillIfWaiting} && defined !$Processes->{$ProcessID}->{RunAtTime});
                 if ($WaitingMaxSeconds > $Processes->{$ProcessID}->{KillIfWaiting}) {

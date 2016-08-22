@@ -11,6 +11,8 @@ CREATE SCHEMA cron;
 \ir TABLES/jobs.sql
 \ir TABLES/processes.sql
 \ir TABLES/log.sql
+\ir TABLES/logwaiting.sql
+\ir TABLES/logwaitingpgstatactivity.sql
 \ir FUNCTIONS/waiting_pids.sql
 \ir FUNCTIONS/is_valid_function.sql
 \ir FUNCTIONS/register.sql
@@ -22,6 +24,7 @@ CREATE SCHEMA cron;
 \ir FUNCTIONS/terminate_backend.sql
 \ir FUNCTIONS/new_connection_pool.sql
 \ir FUNCTIONS/reset_runattime.sql
+\ir FUNCTIONS/log_waiting.sql
 \ir VIEWS/vjobs.sql
 \ir VIEWS/vprocesses.sql
 \ir VIEWS/vlog.sql
