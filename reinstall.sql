@@ -19,6 +19,7 @@ CREATE SCHEMA cron;
 \ir FUNCTIONS/terminate_backend.sql
 \ir FUNCTIONS/reset_runattime.sql
 \ir FUNCTIONS/log_waiting.sql
+\ir FUNCTIONS/schedule.sql
 \ir VIEWS/vjobs.sql
 \ir VIEWS/vprocesses.sql
 \ir VIEWS/vlog.sql
