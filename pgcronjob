@@ -109,14 +109,12 @@ while (1) {
             tprint("Waiting pg backends: " . join(', ', map{'[PID ' . $_ . ' ' . $WaitingPIDsSeconds->{$_} . ' secs]'} keys %$WaitingPIDsSeconds));
             $Log_Waiting->execute(scalar keys %$WaitingPIDsSeconds, $WaitingMaxSeconds);
             foreach my $ProcessID (keys %{$Processes}) {
-                next unless (defined $Processes->{$ProcessID}->{KillIfWaiting} && defined !$Processes->{$ProcessID}->{RunAtTime});
+                next unless (defined $Processes->{$ProcessID}->{KillIfWaiting} && defined !$Processes->{$ProcessID}->{RunAtTime} && $Processes->{$ProcessID}->{DatabaseHandle});
                 if ($WaitingMaxSeconds > $Processes->{$ProcessID}->{KillIfWaiting}) {
                     tprint("Backends have been waiting for $WaitingMaxSeconds seconds which is longer than the limit of $Processes->{$ProcessID}->{KillIfWaiting} seconds, killing ProcessID $ProcessID with pg backend PID $Processes->{$ProcessID}->{PgBackendPID}");
                     $Terminate_Backend->execute($Processes->{$ProcessID}->{PgBackendPID});
-                    if ($Processes->{$ProcessID}->{DatabaseHandle}) {
-                        $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
-                        $Processes->{$ProcessID}->{DatabaseHandle} = undef;
-                    }
+                    $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
+                    $Processes->{$ProcessID}->{DatabaseHandle} = undef;
                     if (defined $Processes->{$ProcessID}->{ConnectionPoolID}) {
                         $NumProcesses->{$Processes->{$ProcessID}->{ConnectionPoolID}}--;
                     }
