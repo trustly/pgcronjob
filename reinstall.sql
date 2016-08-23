@@ -23,6 +23,7 @@ CREATE SCHEMA cron;
 \ir VIEWS/vjobs.sql
 \ir VIEWS/vprocesses.sql
 \ir VIEWS/vlog.sql
+\ir VIEWS/vwaiting.sql
 GRANT USAGE ON SCHEMA cron TO pgcronjob;
 GRANT SELECT,UPDATE ON TABLE cron.Jobs TO pgcronjob;
 GRANT INSERT ON TABLE cron.Log TO pgcronjob;
