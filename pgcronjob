@@ -28,11 +28,11 @@ sub tprint {
 
 my $Processes = {};
 
-my $ConnectTime -= time;
+my $StartupTime = time;
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
-$ConnectTime += time;
+my $ConnectTime = time - $StartupTime;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
-my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := ?)');
+my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := $1)');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
 my $Waiting_PIDs           = $DispatchDatabaseHandle->prepare('SELECT cron.Waiting_PIDs()');
 my $Log_Waiting            = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Waiting(_NumPIDs := ?, _MaxSeconds := ?)');
@@ -42,16 +42,14 @@ unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
     die "Not connected as the 'pgcronjob' database user!";
 }
 
-while (1) {
+for (;;) {
     $Terminate_All_Backends->execute();
     my ($OK) = $Terminate_All_Backends->fetchrow_array();
-    if ($OK) {
-        # all cron.Run() processes have now been terminated
+    if ($OK == 1) {
         last;
-    } else {
-        tprint("Waiting for old cron processes to be terminated");
-        sleep(1); # wait for processes to be terminated
     }
+    tprint("Waiting for old cron processes to be terminated");
+    sleep(1); # wait for processes to be terminated
 }
 $Reset_RunAtTime->execute();
 
@@ -76,8 +74,8 @@ sub DumpState {
 
 $SIG{HUP} = \&DumpState;
 
-while (1) {
-    if (time > $DispatchTime) {
+for (;;) {
+    if (time() > $DispatchTime) {
         $Dispatch->execute();
         my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID, $KillIfWaiting) = $Dispatch->fetchrow_array();
         if (defined $RunProcessID) {
@@ -88,7 +86,7 @@ while (1) {
                 KillIfWaiting    => $KillIfWaiting
             };
         } else {
-            $DispatchTime = time+1;
+            $DispatchTime = time() + 1;
         }
 
         $Waiting_PIDs->execute();
@@ -129,7 +127,7 @@ while (1) {
         my $RunASAP           = \$Process->{RunASAP};
         my $MaxProcesses      = \$Process->{MaxProcesses};
         my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
-        my $RunDatabaseHandle = \$Process->{DatabaseHandle};
+        my $RunDatabaseHandle = \$Process->{Datandle};
         my $Run               = \$Process->{Run};
         my $KillIfWaiting     = \$Process->{KillIfWaiting};
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
@@ -156,8 +154,10 @@ while (1) {
             my $Rows = $$Run->pg_result;
             die "Unexpected number of rows: $Rows" unless $Rows == 1;
             my ($RunInSeconds) = $$Run->fetchrow_array();
+            if ($$Run->fetchrow_array()) {
+                rasise waht
+            }
             if (!defined $RunInSeconds || $RunInSeconds > $ConnectTime) {
-                $$Run->finish;
                 $$Run = undef;
                 delete $Process->{Run};
                 $$RunDatabaseHandle->disconnect;
@@ -166,7 +166,9 @@ while (1) {
                 delete $Process->{PgBackendPID};
             }
             if (defined $RunInSeconds) {
-                $$RunAtTime = time + ($$RunASAP ? 0 : $RunInSeconds);
+                # We want to actually assign a time here in order to let
+                # the main loop prioritize the tasks correctly.
+                $$RunAtTime = time() + ($$RunASAP ? 0 : $RunInSeconds);
                 $$RunASAP = undef;
             } else {
                 delete $Processes->{$ProcessID};
@@ -175,11 +177,17 @@ while (1) {
     }
     while (my $NOTIFY = $LISTENDatabaseHandle->pg_notifies) {
         my ($NOTIFYName, $NOTIFYPID, $NOTIFYPayload) = @$NOTIFY;
-        next unless $NOTIFYName eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/;
+        unless ($NOTIFYNAME eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/) {
+            die "unexpected notification $NOTIFYName $NOTIFYPayload";
+        }
         my $ProcessID = $NOTIFYPayload;
-        next unless defined $Processes->{$ProcessID};
-        if ($Processes->{$ProcessID}->{RunAtTime}) {
-            $Processes->{$ProcessID}->{RunAtTime} = time;
+        if (!defined($Processes->{$ProcessID})) {
+            # This could happen because notifications can be delayed
+            # for an arbitrary amount of time.
+            next;
+        }
+        if (defined($Processes->{$ProcessID}->{RunAtTime})) {
+            $Processes->{$ProcessID}->{RunAtTime} = time();
         } else {
             $Processes->{$ProcessID}->{RunASAP} = 1;
         }
