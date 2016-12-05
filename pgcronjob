@@ -45,7 +45,7 @@ unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
 for (;;) {
     $Terminate_All_Backends->execute();
     my ($OK) = $Terminate_All_Backends->fetchrow_array();
-    if ($OK) {
+    if ($OK == 1) {
         # all cron.Run() processes have now been terminated
         last;
     } else {
@@ -135,7 +135,7 @@ while (1) {
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
-        if ($$RunAtTime) {
+        if ($$RunAtTime > 0) {
             if ($$RunAtTime > time() || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
                 next;
             }
@@ -178,7 +178,7 @@ while (1) {
         next unless $NOTIFYName eq $LISTENName && $NOTIFYPayload =~ m/^\d+$/;
         my $ProcessID = $NOTIFYPayload;
         next unless defined $Processes->{$ProcessID};
-        if ($Processes->{$ProcessID}->{RunAtTime}) {
+        if ($Processes->{$ProcessID}->{RunAtTime} > 0) {
             $Processes->{$ProcessID}->{RunAtTime} = time();
         } else {
             $Processes->{$ProcessID}->{RunASAP} = 1;
