@@ -33,7 +33,7 @@ my $DispatchDatabaseHandle = DBI->connect(@DispatchConnect) or die "Unable to co
 my $ConnectTime = time() - $StartupTime;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
-my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID FROM cron.Dispatch()');
+my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, RetryOnError FROM cron.Dispatch()');
 my $Log_Error              = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Error(_ProcessID := $1, _PgBackendPID := $2, _PgErr := $3, _PgErrStr := $4, _PgState := $5)');
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
@@ -98,6 +98,7 @@ sub CheckErr {
     my $RunDatabaseHandle = \$Process->{DatabaseHandle};
     my $Run               = \$Process->{Run};
     my $RunAtTime         = \$Process->{RunAtTime};
+    my $RetryOnError      = \$Process->{RetryOnError};
 
     if (!defined($$RunDatabaseHandle->err) || $$RunDatabaseHandle->err == 0) {
         # OK since it was not a database error,
@@ -120,27 +121,18 @@ sub CheckErr {
 
     # Handle database errors that are common and normal enough to motivate recovering from
     if ($PgErr == 7) {
-        if ($PgState eq '57014') {
-            # "canceling statement due to user request"
-            # Common scenario: Someone/something called pg_cancel_backend() on us
+        if ($PgState eq 'P0001' # RAISE EXCEPTION
+         || $PgState eq '57014' # canceling statement due to user request: pg_cancel_backend()
+         || $PgState eq '08000' # server closed the connection unexpectedly: pg_terminate_backend()
+         || $PgState eq '42501' # permission denied for relation: developer forgot to grant permissions to some pgcronjob function
+        ) {
             FinishDisconnect($ProcessID);
-            $$RunAtTime = time() + 1; # retry in 1 second
+            if ($RetryOnError) {
+                $$RunAtTime = time() + 1; # retry in one second
+            } else {
+                delete $Processes->{$ProcessID};
+            }
             return 0;
-
-        } elsif ($PgState eq '08000') {
-            # "server closed the connection unexpectedly"
-            # Common scenario: Someone/something called pg_terminate_backend() on us
-            FinishDisconnect($ProcessID);
-            $$RunAtTime = time() + 1; # retry in 1 second
-            return 0;
-
-        } elsif ($PgState eq '42501') {
-            # "permission denied for relation"
-            # Common scenario: The developer forgot to grant permissions to a pgcronjob function or its schema
-            FinishDisconnect($ProcessID);
-            $$RunAtTime = time() + 60; # retry in 60 seconds
-            return 0;
-
         }
     }
 
@@ -164,12 +156,13 @@ $SIG{HUP} = \&DumpState;
 for (;;) {
     if (time() > $DispatchTime) {
         $Dispatch->execute();
-        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID) = $Dispatch->fetchrow_array();
+        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID, $RetryOnError) = $Dispatch->fetchrow_array();
         if (defined $RunProcessID) {
             $Processes->{$RunProcessID} = {
                 RunAtTime        => time() + $RunInSeconds,
                 MaxProcesses     => $MaxProcesses,
-                ConnectionPoolID => $ConnectionPoolID
+                ConnectionPoolID => $ConnectionPoolID,
+                RetryOnError     => $RetryOnError
             };
         } else {
             $DispatchTime = time()+1;
@@ -182,6 +175,7 @@ for (;;) {
         my $RunASAP           = \$Process->{RunASAP};
         my $MaxProcesses      = \$Process->{MaxProcesses};
         my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
+        my $RetryOnError      = \$Process->{RetryOnError};
         my $RunDatabaseHandle = \$Process->{DatabaseHandle};
         my $Run               = \$Process->{Run};
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {

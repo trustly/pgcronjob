@@ -8,11 +8,8 @@ FirstRunFinishedAt        timestamptz,
 LastRunStartedAt          timestamptz,
 LastRunFinishedAt         timestamptz,
 BatchJobState             batchjobstate,
-LastSQLSTATE              text,
-LastSQLERRM               text,
 PgBackendPID              integer,
-PRIMARY KEY (ProcessID),
-CHECK(LastSQLSTATE ~ '^[0-9A-Z]{5}$')
+PRIMARY KEY (ProcessID)
 );
 
 ALTER TABLE cron.Processes OWNER TO pgcronjob;
