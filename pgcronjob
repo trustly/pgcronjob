@@ -32,11 +32,8 @@ my $StartupTime = time();
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
 my $ConnectTime = time() - $StartupTime;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
-my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := $1)');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
-my $Waiting_PIDs           = $DispatchDatabaseHandle->prepare('SELECT cron.Waiting_PIDs()');
-my $Log_Waiting            = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Waiting(_NumPIDs := $1, _MaxSeconds := $2)');
-my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, KillIfWaiting FROM cron.Dispatch()');
+my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID FROM cron.Dispatch()');
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
     die "Not connected as the 'pgcronjob' database user!";
@@ -61,7 +58,6 @@ tprint("PgCronJob is now running");
 
 my $DispatchTime = time();
 my $NumProcesses = {};
-my $WaitingPIDsSeconds = {};
 
 sub DumpState {
     tprint("ConnectTime: $ConnectTime\n"
@@ -78,49 +74,17 @@ $SIG{HUP} = \&DumpState;
 while (1) {
     if (time() > $DispatchTime) {
         $Dispatch->execute();
-        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID, $KillIfWaiting) = $Dispatch->fetchrow_array();
+        my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID) = $Dispatch->fetchrow_array();
         if (defined $RunProcessID) {
             $Processes->{$RunProcessID} = {
                 RunAtTime        => time() + $RunInSeconds,
                 MaxProcesses     => $MaxProcesses,
-                ConnectionPoolID => $ConnectionPoolID,
-                KillIfWaiting    => $KillIfWaiting
+                ConnectionPoolID => $ConnectionPoolID
             };
         } else {
             $DispatchTime = time()+1;
         }
 
-        $Waiting_PIDs->execute();
-        my ($PIDs) = $Waiting_PIDs->fetchrow_array();
-        foreach my $PID (keys %{$WaitingPIDsSeconds}) {
-            unless (grep {$_ eq $PID} @$PIDs) {
-                delete $WaitingPIDsSeconds->{$PID};
-            }
-        }
-        my $WaitingMaxSeconds = 0;
-        foreach my $PID (@$PIDs) {
-            $WaitingPIDsSeconds->{$PID} += 1;
-            if ($WaitingPIDsSeconds->{$PID} > $WaitingMaxSeconds) {
-                $WaitingMaxSeconds = $WaitingPIDsSeconds->{$PID};
-            }
-        }
-        if (%$WaitingPIDsSeconds) {
-            tprint("Waiting pg backends: " . join(', ', map{'[PID ' . $_ . ' ' . $WaitingPIDsSeconds->{$_} . ' secs]'} keys %$WaitingPIDsSeconds));
-            $Log_Waiting->execute(scalar keys %$WaitingPIDsSeconds, $WaitingMaxSeconds);
-            foreach my $ProcessID (keys %{$Processes}) {
-                next unless (defined $Processes->{$ProcessID}->{KillIfWaiting} && defined !$Processes->{$ProcessID}->{RunAtTime} && $Processes->{$ProcessID}->{DatabaseHandle});
-                if ($WaitingMaxSeconds > $Processes->{$ProcessID}->{KillIfWaiting}) {
-                    tprint("Backends have been waiting for $WaitingMaxSeconds seconds which is longer than the limit of $Processes->{$ProcessID}->{KillIfWaiting} seconds, killing ProcessID $ProcessID with pg backend PID $Processes->{$ProcessID}->{PgBackendPID}");
-                    $Terminate_Backend->execute($Processes->{$ProcessID}->{PgBackendPID});
-                    $Processes->{$ProcessID}->{DatabaseHandle}->disconnect;
-                    $Processes->{$ProcessID}->{DatabaseHandle} = undef;
-                    if (defined $Processes->{$ProcessID}->{ConnectionPoolID}) {
-                        $NumProcesses->{$Processes->{$ProcessID}->{ConnectionPoolID}}--;
-                    }
-                    delete $Processes->{$ProcessID};
-                }
-            }
-        }
     }
     foreach my $ProcessID (sort {$Processes->{$a}->{RunAtTime} <=> $Processes->{$b}->{RunAtTime}} keys %{$Processes}) {
         my $Process = $Processes->{$ProcessID};
@@ -130,7 +94,6 @@ while (1) {
         my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
         my $RunDatabaseHandle = \$Process->{DatabaseHandle};
         my $Run               = \$Process->{Run};
-        my $KillIfWaiting     = \$Process->{KillIfWaiting};
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
