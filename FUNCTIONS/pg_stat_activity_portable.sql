@@ -23,7 +23,26 @@ _VersionNum int;
 BEGIN
 
 _VersionNum := current_setting('server_version_num')::int;
-IF _VersionNum < 90600 THEN
+IF  _VersionNum >= 90600 THEN
+    RETURN QUERY
+    SELECT
+        s.datid,
+        s.datname,
+        s.pid,
+        s.usesysid,
+        s.usename,
+        s.application_name,
+        s.client_addr,
+        s.client_hostname,
+        s.client_port,
+        s.backend_start,
+        s.xact_start,
+        s.query_start,
+        s.wait_event IS NOT NULL AS waiting,
+        s.state,
+        s.query
+    FROM pg_stat_activity s;
+ELSIF _VersionNum >= 90200 THEN
     RETURN QUERY
     SELECT
         s.datid,
@@ -41,7 +60,7 @@ IF _VersionNum < 90600 THEN
         s.waiting,
         s.query
     FROM pg_stat_activity s;
-ELSIF _VersionNum < 90200 THEN
+ELSE
     RETURN QUERY
     SELECT
         s.datid,
@@ -65,28 +84,8 @@ ELSIF _VersionNum < 90200 THEN
             END AS state,
         s.current_query
     FROM pg_stat_activity s;
-ELSE
-    RETURN QUERY
-    SELECT
-        s.datid,
-        s.datname,
-        s.pid,
-        s.usesysid,
-        s.usename,
-        s.application_name,
-        s.client_addr,
-        s.client_hostname,
-        s.client_port,
-        s.backend_start,
-        s.xact_start,
-        s.query_start,
-        s.wait_event IS NOT NULL AS waiting,
-        s.state,
-        s.query
-    FROM pg_stat_activity s;
 END IF;
 END
 $$ LANGUAGE plpgsql;
 
-ALTER FUNCTION public.pg_stat_activity_portable() OWNER TO pgcronjob;
-
+ALTER FUNCTION public.pg_stat_activity_portable() OWNER TO pgterminator;
