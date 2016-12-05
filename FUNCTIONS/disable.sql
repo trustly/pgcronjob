@@ -10,7 +10,7 @@ _Enabled boolean;
 BEGIN
 IF cron.Is_Valid_Function(_Function) IS NOT TRUE THEN
     RAISE EXCEPTION 'Function % is not a valid cron function.', _Function
-    USING HINT = 'It must return BATCHJOBSTATE and the cronjob user must have been explicitly granted EXECUTE on the function.';
+    USING HINT = 'It must return BATCHJOBSTATE and the pgcronjob user must have been explicitly granted EXECUTE on the function.';
 END IF;
 
 IF (SELECT COUNT(*) FROM cron.Jobs WHERE Function = _Function::text) > 1 THEN
@@ -29,7 +29,7 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'Function % is a valid cron function but has not yet been registered as JobID', _Function;
 ELSE
     IF _Enabled IS TRUE THEN
-        UPDATE Jobs SET Enabled = FALSE WHERE JobID = _JobID AND Enabled IS TRUE RETURNING TRUE INTO STRICT _OK;
+        UPDATE cron.Jobs SET Enabled = FALSE WHERE JobID = _JobID AND Enabled IS TRUE RETURNING TRUE INTO STRICT _OK;
     ELSIF _Enabled IS FALSE THEN
         RAISE NOTICE 'Function % with JobID % has already been disabled', _Function, _JobID;
     ELSE
