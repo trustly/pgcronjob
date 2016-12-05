@@ -48,10 +48,9 @@ for (;;) {
     if ($OK == 1) {
         # all cron.Run() processes have now been terminated
         last;
-    } else {
-        tprint("Waiting for old cron processes to be terminated");
-        sleep(1); # wait for processes to be terminated
     }
+    tprint("Waiting for old cron processes to be terminated");
+    sleep(1); # wait for processes to be terminated
 }
 $Reset_RunAtTime->execute();
 
