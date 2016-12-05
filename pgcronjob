@@ -184,7 +184,11 @@ while (1) {
             die "Unexpected notification $NOTIFYName $NOTIFYPayload";
         }
         my $ProcessID = $NOTIFYPayload;
-        next unless defined $Processes->{$ProcessID};
+        if (!defined $Processes->{$ProcessID}) {
+            # This could happen because notifications can be delayed
+            # for an arbitrary amount of time.
+            next;
+        }
         if ($Processes->{$ProcessID}->{RunAtTime} > 0) {
             $Processes->{$ProcessID}->{RunAtTime} = time();
         } else {
