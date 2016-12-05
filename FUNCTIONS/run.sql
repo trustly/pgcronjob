@@ -4,36 +4,37 @@ LANGUAGE plpgsql
 SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
-_OK                      boolean;
-_JobID                   integer;
-_Function                regprocedure;
-_RunAtTime               timestamptz;
-_BatchJobState           batchjobstate;
-_Concurrent              boolean;
-_IntervalAGAIN           interval;
-_IntervalDONE            interval;
-_RandomInterval          boolean;
-_RetryOnError            boolean;
-_RunIfWaiting            boolean;
-_RunAfterTimestamp       timestamptz;
-_RunUntilTimestamp       timestamptz;
-_RunAfterTime            interval;
-_RunUntilTime            interval;
-_LastRunStartedAt        timestamptz;
-_LastRunFinishedAt       timestamptz;
-_LastSQLSTATE            text;
-_LastSQLERRM             text;
-_seq_scan                bigint;
-_seq_tup_read            bigint;
-_idx_scan                bigint;
-_idx_tup_fetch           bigint;
-_n_tup_ins               bigint;
-_n_tup_upd               bigint;
-_n_tup_del               bigint;
-_n_tup_hot_upd           bigint;
-_SQL                     text;
-_ConnectionPoolID        integer;
+_OK                  boolean;
+_JobID               integer;
+_Function            regprocedure;
+_RunAtTime           timestamptz;
+_BatchJobState       batchjobstate;
+_Concurrent          boolean;
+_IntervalAGAIN       interval;
+_IntervalDONE        interval;
+_RandomInterval      boolean;
+_RetryOnError        boolean;
+_RunIfWaiting        boolean;
+_RunAfterTimestamp   timestamptz;
+_RunUntilTimestamp   timestamptz;
+_RunAfterTime        interval;
+_RunUntilTime        interval;
+_LastRunStartedAt    timestamptz;
+_LastRunFinishedAt   timestamptz;
+_LastSQLSTATE        text;
+_LastSQLERRM         text;
+_seq_scan            bigint;
+_seq_tup_read        bigint;
+_idx_scan            bigint;
+_idx_tup_fetch       bigint;
+_n_tup_ins           bigint;
+_n_tup_upd           bigint;
+_n_tup_del           bigint;
+_n_tup_hot_upd       bigint;
+_SQL                 text;
+_ConnectionPoolID    integer;
 _CycleFirstProcessID integer;
+_Enabled             boolean;
 BEGIN
 
 IF _ProcessID IS NULL THEN
@@ -43,6 +44,7 @@ END IF;
 SELECT
     P.RunAtTime,
     J.JobID,
+    J.Enabled,
     J.Function::regprocedure,
     J.Concurrent,
     J.RunIfWaiting,
@@ -59,6 +61,7 @@ SELECT
 INTO STRICT
     _RunAtTime,
     _JobID,
+    _Enabled,
     _Function,
     _Concurrent,
     _RunIfWaiting,
@@ -78,7 +81,7 @@ LEFT JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolI
 WHERE P.ProcessID = _ProcessID
 FOR UPDATE OF P;
 
-IF _RunAtTime IS NULL THEN
+IF _RunAtTime IS NULL OR NOT _Enabled THEN
     RETURN;
 ELSIF _RunAtTime > now() THEN
     RunInSeconds := extract(epoch from _RunAtTime-now());
@@ -143,8 +146,10 @@ INTO STRICT
 FROM pg_catalog.pg_stat_xact_user_tables;
 
 BEGIN
-    IF NOT pg_try_advisory_xact_lock(_Function::int, 0) AND NOT _Concurrent THEN
-        RAISE EXCEPTION 'Aborting % because of a concurrent execution', _Function;
+    IF NOT _Concurrent THEN
+        IF NOT pg_try_advisory_xact_lock(_Function::int, 0) THEN
+            RAISE EXCEPTION 'Aborting % because of a concurrent execution', _Function;
+        END IF;
     END IF;
     _SQL := 'SELECT '||format(replace(_Function::text,'(integer)','(%s)'),_ProcessID);
     RAISE DEBUG 'Starting cron job % process % %', _JobID, _ProcessID, _SQL;
