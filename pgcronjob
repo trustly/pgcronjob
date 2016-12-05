@@ -156,6 +156,9 @@ while (1) {
             my $Rows = $$Run->pg_result;
             die "Unexpected number of rows: $Rows" unless $Rows == 1;
             my ($RunInSeconds) = $$Run->fetchrow_array();
+            if ($$Run->fetchrow_array()) {
+                die "Unexpected extra row returned";
+            }
             if (!defined $RunInSeconds || $RunInSeconds > $ConnectTime) {
                 $$Run->finish;
                 $$Run = undef;
