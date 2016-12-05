@@ -5,6 +5,11 @@ CREATE TYPE public.batchjobstate AS ENUM (
     'AGAIN',
     'DONE'
 );
+COMMIT;
+BEGIN;
+DROP SCHEMA cron CASCADE;
+COMMIT;
+BEGIN;
 CREATE SCHEMA cron;
 \ir FUNCTIONS/pg_stat_activity_portable.sql
 \ir TABLES/connectionpools.sql
