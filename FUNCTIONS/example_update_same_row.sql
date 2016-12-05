@@ -1,4 +1,5 @@
 CREATE TABLE cron.ExampleUpdateSameRow (ID int NOT NULL PRIMARY KEY, Datestamp timestamptz, ProcessID integer);
+GRANT ALL ON TABLE cron.ExampleUpdateSameRow TO pgcronjob;
 INSERT INTO cron.ExampleUpdateSameRow (ID) VALUES (1);
 
 CREATE OR REPLACE FUNCTION cron.Example_Update_Same_Row(_ProcessID integer)
