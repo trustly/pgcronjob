@@ -14,7 +14,7 @@ IF _ProcessID IS NULL THEN
     LIMIT 1;
 END IF;
 
-UPDATE cron.Processes SET RunAtTime = now() WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;
+UPDATE cron.Processes SET RunAtTime = CASE WHEN RunAtTime > now() THEN now() ELSE NULL END WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;
 PERFORM pg_notify('cron.Dispatch()',_ProcessID::text);
 
 RETURN TRUE;
