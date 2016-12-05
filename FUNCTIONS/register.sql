@@ -27,7 +27,7 @@ _CycleFirstProcessID integer;
 BEGIN
 IF cron.Is_Valid_Function(_Function) IS NOT TRUE THEN
     RAISE EXCEPTION 'Function % is not a valid CronJob function.', _Function
-    USING HINT = 'It must return BATCHJOBSTATE and the cronjob user must have been explicitly granted EXECUTE on the function.';
+    USING HINT = 'It must return BATCHJOBSTATE and the pgcronjob user must have been explicitly granted EXECUTE on the function.';
 END IF;
 
 IF _ConnectionPool IS NOT NULL THEN
