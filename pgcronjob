@@ -28,9 +28,9 @@ sub tprint {
 
 my $Processes = {};
 
-my $ConnectTime -= time;
+my $ConnectTime -= time();
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
-$ConnectTime += time;
+$ConnectTime += time();
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
 my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := $1)');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
@@ -60,7 +60,7 @@ $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " 
 
 tprint("PgCronJob is now running");
 
-my $DispatchTime = time;
+my $DispatchTime = time();
 my $NumProcesses = {};
 my $WaitingPIDsSeconds = {};
 
@@ -77,7 +77,7 @@ sub DumpState {
 $SIG{HUP} = \&DumpState;
 
 while (1) {
-    if (time > $DispatchTime) {
+    if (time() > $DispatchTime) {
         $Dispatch->execute();
         my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID, $KillIfWaiting) = $Dispatch->fetchrow_array();
         if (defined $RunProcessID) {
@@ -88,7 +88,7 @@ while (1) {
                 KillIfWaiting    => $KillIfWaiting
             };
         } else {
-            $DispatchTime = time+1;
+            $DispatchTime = time()+1;
         }
 
         $Waiting_PIDs->execute();
@@ -136,7 +136,7 @@ while (1) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
         if ($$RunAtTime) {
-            if ($$RunAtTime > time || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
+            if ($$RunAtTime > time() || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
                 next;
             }
             unless (defined $$RunDatabaseHandle) {
@@ -166,7 +166,7 @@ while (1) {
                 delete $Process->{PgBackendPID};
             }
             if (defined $RunInSeconds) {
-                $$RunAtTime = time + ($$RunASAP ? 0 : $RunInSeconds);
+                $$RunAtTime = time() + ($$RunASAP ? 0 : $RunInSeconds);
                 $$RunASAP = undef;
             } else {
                 delete $Processes->{$ProcessID};
@@ -179,7 +179,7 @@ while (1) {
         my $ProcessID = $NOTIFYPayload;
         next unless defined $Processes->{$ProcessID};
         if ($Processes->{$ProcessID}->{RunAtTime}) {
-            $Processes->{$ProcessID}->{RunAtTime} = time;
+            $Processes->{$ProcessID}->{RunAtTime} = time();
         } else {
             $Processes->{$ProcessID}->{RunASAP} = 1;
         }
