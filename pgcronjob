@@ -32,10 +32,10 @@ my $ConnectTime -= time;
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
 $ConnectTime += time;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
-my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := ?)');
+my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := $1)');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
 my $Waiting_PIDs           = $DispatchDatabaseHandle->prepare('SELECT cron.Waiting_PIDs()');
-my $Log_Waiting            = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Waiting(_NumPIDs := ?, _MaxSeconds := ?)');
+my $Log_Waiting            = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Waiting(_NumPIDs := $1, _MaxSeconds := $2)');
 my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, KillIfWaiting FROM cron.Dispatch()');
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
