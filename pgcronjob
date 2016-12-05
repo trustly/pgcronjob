@@ -42,7 +42,7 @@ unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
     die "Not connected as the 'pgcronjob' database user!";
 }
 
-while (1) {
+for (;;) {
     $Terminate_All_Backends->execute();
     my ($OK) = $Terminate_All_Backends->fetchrow_array();
     if ($OK) {
