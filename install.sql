@@ -11,6 +11,8 @@ CREATE SCHEMA cron;
 \ir TABLES/jobs.sql
 \ir TABLES/processes.sql
 \ir TABLES/log.sql
+\ir TABLES/errorlog.sql
+\ir FUNCTIONS/log_error.sql
 \ir FUNCTIONS/waiting_pids.sql
 \ir FUNCTIONS/is_valid_function.sql
 \ir FUNCTIONS/register.sql

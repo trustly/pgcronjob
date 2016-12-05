@@ -10,9 +10,9 @@ use DateTime;
 
 $| = 1;
 
-my @Connect       = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
-
-my @LISTENConnect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
+my @DispatchConnect = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
+my @RunConnect      = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 0, PrintError => 0, AutoCommit => 1});
+my @LISTENConnect   = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
 my $LISTENName = 'cron.Dispatch()';
 
 sub SQL_Run {
@@ -29,11 +29,12 @@ sub tprint {
 my $Processes = {};
 
 my $StartupTime = time();
-my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
+my $DispatchDatabaseHandle = DBI->connect(@DispatchConnect) or die "Unable to connect";
 my $ConnectTime = time() - $StartupTime;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
 my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID FROM cron.Dispatch()');
+my $Log_Error              = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Error(_ProcessID := $1, _PgBackendPID := $2, _PgErr := $3, _PgErrStr := $4, _PgState := $5)');
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
     die "Not connected as the 'pgcronjob' database user!";
@@ -59,6 +60,95 @@ tprint("PgCronJob is now running");
 my $DispatchTime = time();
 my $NumProcesses = {};
 
+sub FinishDisconnect {
+    my $ProcessID = shift;    
+    my $Process = $Processes->{$ProcessID};
+    if (!defined $Process) {
+        return 1; # OK, no such process
+    }
+    if (!defined $Process->{DatabaseHandle}) {
+        return 1; # OK, no such database handle
+    }
+    my $RunDatabaseHandle = \$Process->{DatabaseHandle};
+    my $Run               = \$Process->{Run};
+    $$Run->finish;
+    $$Run = undef;
+    delete $Process->{Run};
+    $$RunDatabaseHandle->disconnect;
+    $$RunDatabaseHandle = undef;
+    delete $Process->{DatabaseHandle};
+    delete $Process->{PgBackendPID};
+    return 1; #OK, finished and disconnected
+}
+
+# CheckErr checks if a non-true $ReturnValue was due to a database error or not.
+sub CheckErr {
+    my ($ReturnValue, $ProcessID) = @_;
+    my ($Package, $FileName, $Line) = caller();
+    if ($ReturnValue) {
+        # OK since $ReturnValue evaluated to true
+        return 1;
+    }
+
+    my $Process = $Processes->{$ProcessID};
+    if (!defined $Process || !defined $Process->{DatabaseHandle}) {
+        return 0; # error, no such process or database handle
+    }
+
+    my $RunDatabaseHandle = \$Process->{DatabaseHandle};
+    my $Run               = \$Process->{Run};
+    my $RunAtTime         = \$Process->{RunAtTime};
+
+    if (!defined($$RunDatabaseHandle->err) || $$RunDatabaseHandle->err == 0) {
+        # OK since it was not a database error,
+        # so the non-true $ReturnValue must have been
+        # due to no rows returned or some other non-error situation
+        return 1;
+    }
+
+    my $PgErr    = $Process->{DatabaseHandle}->err;
+    my $PgErrStr = $Process->{DatabaseHandle}->errstr;
+    my $PgState  = $Process->{DatabaseHandle}->state;
+
+    $Log_Error->execute(
+        $ProcessID,
+        $Process->{DatabaseHandle}->{pg_pid},
+        $PgErr,
+        $PgErrStr,
+        $PgState
+    );
+
+    # Handle database errors that are common and normal enough to motivate recovering from
+    if ($PgErr == 7) {
+        if ($PgState eq '57014') {
+            # "canceling statement due to user request"
+            # Common scenario: Someone/something called pg_cancel_backend() on us
+            FinishDisconnect($ProcessID);
+            $$RunAtTime = time() + 1; # retry in 1 second
+            return 0;
+
+        } elsif ($PgState eq '08000') {
+            # "server closed the connection unexpectedly"
+            # Common scenario: Someone/something called pg_terminate_backend() on us
+            FinishDisconnect($ProcessID);
+            $$RunAtTime = time() + 1; # retry in 1 second
+            return 0;
+
+        } elsif ($PgState eq '42501') {
+            # "permission denied for relation"
+            # Common scenario: The developer forgot to grant permissions to a pgcronjob function or its schema
+            FinishDisconnect($ProcessID);
+            $$RunAtTime = time() + 60; # retry in 60 seconds
+            return 0;
+
+        }
+    }
+
+    # For all other uncommon or unexpected database errors,
+    # handle the error by dying and let us be restarted by upstart or whatever
+    die "Unexpected database error at package $Package filename $FileName line $Line: $PgErr $PgState: $PgErrStr";
+}
+
 sub DumpState {
     tprint("ConnectTime: $ConnectTime\n"
         . "DispatchTime: $DispatchTime\n"
@@ -71,7 +161,7 @@ sub DumpState {
 
 $SIG{HUP} = \&DumpState;
 
-while (1) {
+for (;;) {
     if (time() > $DispatchTime) {
         $Dispatch->execute();
         my ($RunProcessID, $RunInSeconds, $MaxProcesses, $ConnectionPoolID) = $Dispatch->fetchrow_array();
@@ -102,11 +192,11 @@ while (1) {
                 next;
             }
             unless (defined $$RunDatabaseHandle) {
-                $$RunDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
+                $$RunDatabaseHandle = DBI->connect(@RunConnect) or die "Unable to connect";
                 $Process->{PgBackendPID} = ${$RunDatabaseHandle}->{pg_pid};
-                $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC});
+                $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
             }
-            $$Run->execute();
+            CheckErr($$Run->execute(), $ProcessID) or die "Unexpected execute error";
             $$RunAtTime = 0;
             if (defined $$ConnectionPoolID) {
                 $NumProcesses->{$$ConnectionPoolID}++;
@@ -116,19 +206,17 @@ while (1) {
                 $NumProcesses->{$$ConnectionPoolID}--;
             }
             my $Rows = $$Run->pg_result;
-            die "Unexpected number of rows: $Rows" unless $Rows == 1;
+            CheckErr($Rows, $ProcessID) or next;
+            if ($Rows > 1) {
+                die "Unexpected numbers of rows: $Rows";
+            }
             my ($RunInSeconds) = $$Run->fetchrow_array();
+            CheckErr($RunInSeconds, $ProcessID) or next;
             if ($$Run->fetchrow_array()) {
                 die "Unexpected extra row returned";
             }
             if (!defined $RunInSeconds || $RunInSeconds > $ConnectTime) {
-                $$Run->finish;
-                $$Run = undef;
-                delete $Process->{Run};
-                $$RunDatabaseHandle->disconnect;
-                $$RunDatabaseHandle = undef;
-                delete $Process->{DatabaseHandle};
-                delete $Process->{PgBackendPID};
+                FinishDisconnect($ProcessID);
             }
             if (defined $RunInSeconds) {
                 # We want to actually assign a time here in order to let
