@@ -28,9 +28,9 @@ sub tprint {
 
 my $Processes = {};
 
-my $ConnectTime -= time();
+my $StartupTime = time();
 my $DispatchDatabaseHandle = DBI->connect(@Connect) or die "Unable to connect";
-$ConnectTime += time();
+my $ConnectTime = time() - $StartupTime;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
 my $Terminate_Backend      = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_Backend(_PID := $1)');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
