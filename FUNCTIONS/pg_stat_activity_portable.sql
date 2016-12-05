@@ -23,7 +23,25 @@ _VersionNum int;
 BEGIN
 
 _VersionNum := current_setting('server_version_num')::int;
-IF _VersionNum < 90200 THEN
+IF _VersionNum < 90600 THEN
+    RETURN QUERY
+    SELECT
+        s.datid,
+        s.datname,
+        s.pid,
+        s.usesysid,
+        s.usename,
+        s.application_name,
+        s.client_addr,
+        s.client_hostname,
+        s.client_port,
+        s.backend_start,
+        s.xact_start,
+        s.query_start,
+        s.waiting,
+        s.query
+    FROM pg_stat_activity s;
+ELSIF _VersionNum < 90200 THEN
     RETURN QUERY
     SELECT
         s.datid,
@@ -48,6 +66,7 @@ IF _VersionNum < 90200 THEN
         s.current_query
     FROM pg_stat_activity s;
 ELSE
+    RETURN QUERY
     SELECT
         s.datid,
         s.datname,
@@ -61,7 +80,8 @@ ELSE
         s.backend_start,
         s.xact_start,
         s.query_start,
-        s.waiting,
+        s.wait_event IS NOT NULL AS waiting,
+        s.state,
         s.query
     FROM pg_stat_activity s;
 END IF;
