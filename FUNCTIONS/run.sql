@@ -88,12 +88,19 @@ THEN
     RETURN;
 END IF;
 
-IF cron.Waiting_PIDs() IS NOT NULL AND NOT _RunIfWaiting THEN
-    RAISE DEBUG '% ProcessID % pg_backend_pid % : other processes are waiting, aborting', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
-    _RunAtTime := now() + _IntervalAGAIN * CASE WHEN _RandomInterval THEN random() ELSE 1 END;
-    UPDATE cron.Processes SET RunAtTime = _RunAtTime WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;
-    RunInSeconds := extract(epoch from _RunAtTime-now());
-    RETURN;
+IF _RandomInterval IS TRUE THEN
+    _IntervalAGAIN := _IntervalAGAIN * random();
+    _IntervalDONE  := _IntervalDONE  * random();
+END IF;
+
+IF NOT _RunIfWaiting THEN
+    IF cron.Waiting_PIDs() IS NOT NULL THEN
+        RAISE DEBUG '% ProcessID % pg_backend_pid % : other processes are waiting, aborting', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
+        _RunAtTime := now() + _IntervalAGAIN;
+        UPDATE cron.Processes SET RunAtTime = _RunAtTime WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;
+        RunInSeconds := extract(epoch from _RunAtTime-now());
+        RETURN;
+    END IF;
 END IF;
 
 IF _CycleFirstProcessID = _ProcessID THEN
@@ -124,9 +131,9 @@ EXECUTE _SQL USING _ProcessID INTO STRICT _BatchJobState;
 RAISE DEBUG 'Finished cron job % process % % -> %', _JobID, _ProcessID, _SQL, _BatchJobState;
 
 IF _BatchJobState = 'AGAIN' THEN
-    _RunAtTime := now() + _IntervalAGAIN * CASE WHEN _RandomInterval THEN random() ELSE 1 END;
+    _RunAtTime := now() + _IntervalAGAIN;
 ELSIF _BatchJobState = 'DONE' THEN
-    _RunAtTime := now() + _IntervalDONE * CASE WHEN _RandomInterval THEN random() ELSE 1 END;
+    _RunAtTime := now() + _IntervalDONE;
 ELSE
     RAISE EXCEPTION 'Cron function % did not return a valid BatchJobState: %', _Function, _BatchJobState;
 END IF;
