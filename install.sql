@@ -22,7 +22,9 @@ CREATE SCHEMA cron;
 \ir FUNCTIONS/is_valid_function.sql
 \ir FUNCTIONS/register.sql
 \ir FUNCTIONS/disable.sql
+\ir FUNCTIONS/disable_process.sql
 \ir FUNCTIONS/enable.sql
+\ir FUNCTIONS/enable_process.sql
 \ir FUNCTIONS/run.sql
 \ir FUNCTIONS/dispatch.sql
 \ir FUNCTIONS/terminate_all_backends.sql

@@ -41,7 +41,7 @@ END IF;
 
 SELECT
     J.JobID,
-    J.Enabled,
+    J.Enabled AND P.Enabled,
     J.Function::regprocedure,
     J.Concurrent,
     J.RunIfWaiting,

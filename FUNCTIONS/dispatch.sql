@@ -35,6 +35,7 @@ INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
 LEFT JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolID)
 WHERE P.RunAtTime IS NULL
 AND J.Enabled
+AND P.Enabled
 AND (P.BatchJobState IS DISTINCT FROM 'DONE' OR J.IntervalDONE IS NOT NULL)
 AND (J.RunUntilTimestamp > now() OR J.RunUntilTime > now()::time) IS NOT TRUE
 ORDER BY 2 NULLS LAST, 1

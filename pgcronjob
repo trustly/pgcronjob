@@ -34,7 +34,8 @@ my $ConnectTime = time() - $StartupTime;
 my $Terminate_All_Backends = $DispatchDatabaseHandle->prepare('SELECT cron.Terminate_All_Backends()');
 my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset_RunAtTime()');
 my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, RetryOnError FROM cron.Dispatch()');
-my $Log_Error              = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Error(_ProcessID := $1, _PgBackendPID := $2, _PgErr := $3, _PgErrStr := $4, _PgState := $5)');
+my $Log_Error              = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Error(_ProcessID := $1, _PgBackendPID := $2, _PgErr := $3, _PgErrStr := $4, _PgState := $5, _PerlCallerInfo := $6, _RetryInSeconds := $7)');
+my $Disable_Process        = $DispatchDatabaseHandle->prepare('SELECT cron.Disable_Process(_ProcessID := $1)');
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
     die "Not connected as the 'pgcronjob' database user!";
@@ -116,16 +117,18 @@ sub CheckErr {
         $Process->{DatabaseHandle}->{pg_pid},
         $PgErr,
         $PgErrStr,
-        $PgState
+        $PgState,
+        "$FileName line $Line",
+        $$RetryOnError
     );
 
     FinishDisconnect($ProcessID);
+
     if (defined $$RetryOnError) {
         $$RunAtTime = time() + $$RetryOnError;
-        tprint("ERROR ProcessID $ProcessID, will retry in $$RetryOnError seconds, at $Package:$FileName:$Line : $PgErr $PgState\n$PgErrStr");
     } else {
         delete $Processes->{$ProcessID};
-        tprint("ERROR ProcessID $ProcessID, will not retry, process deleted, at $Package:$FileName:$Line : $PgErr $PgState\n$PgErrStr");
+        $Disable_Process->execute($ProcessID);
     }
 
     return 0;
