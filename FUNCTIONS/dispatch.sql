@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION cron.Dispatch(OUT RunProcessID integer, OUT RunInSeconds numeric, OUT MaxProcesses integer, OUT ConnectionPoolID integer, OUT RetryOnError boolean)
+CREATE OR REPLACE FUNCTION cron.Dispatch(OUT RunProcessID integer, OUT RunInSeconds numeric, OUT MaxProcesses integer, OUT ConnectionPoolID integer, OUT RetryOnError numeric)
 RETURNS RECORD
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
@@ -23,7 +23,7 @@ SELECT
     END,
     CP.MaxProcesses,
     J.ConnectionPoolID,
-    J.RetryOnError
+    extract(epoch from J.RetryOnError)
 INTO
     RunProcessID,
     _RunAtTime,

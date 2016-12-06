@@ -21,12 +21,12 @@ so hopefully this will help avoid one or two accidents here and there.
 
 Run until an error is encountered (DEFAULT):
 ```
-SELECT cron.Register('cron.Example_Random_Error(integer)', _RetryOnError := FALSE);
+SELECT cron.Register('cron.Example_Random_Error(integer)', _RetryOnError := NULL);
 ```
 
-Keep running even if an error is encountered:
+Try again after 1 second if an error is encountered:
 ```
-SELECT cron.Register('cron.Example_Random_Error(integer)', _RetryOnError := TRUE);
+SELECT cron.Register('cron.Example_Random_Error(integer)', _RetryOnError := '1 second'::interval);
 ```
 
 Allow concurrent execution (DEFAULT):

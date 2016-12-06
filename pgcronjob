@@ -119,26 +119,16 @@ sub CheckErr {
         $PgState
     );
 
-    # Handle database errors that are common and normal enough to motivate recovering from
-    if ($PgErr == 7) {
-        if ($PgState eq 'P0001' # RAISE EXCEPTION
-         || $PgState eq '57014' # canceling statement due to user request: pg_cancel_backend()
-         || $PgState eq '08000' # server closed the connection unexpectedly: pg_terminate_backend()
-         || $PgState eq '42501' # permission denied for relation: developer forgot to grant permissions to some pgcronjob function
-        ) {
-            FinishDisconnect($ProcessID);
-            if ($RetryOnError) {
-                $$RunAtTime = time() + 1; # retry in one second
-            } else {
-                delete $Processes->{$ProcessID};
-            }
-            return 0;
-        }
+    FinishDisconnect($ProcessID);
+    if (defined $$RetryOnError) {
+        $$RunAtTime = time() + $$RetryOnError;
+        tprint("ERROR ProcessID $ProcessID, will retry in $$RetryOnError seconds, at $Package:$FileName:$Line : $PgErr $PgState\n$PgErrStr");
+    } else {
+        delete $Processes->{$ProcessID};
+        tprint("ERROR ProcessID $ProcessID, will not retry, process deleted, at $Package:$FileName:$Line : $PgErr $PgState\n$PgErrStr");
     }
 
-    # For all other uncommon or unexpected database errors,
-    # handle the error by dying and let us be restarted by upstart or whatever
-    die "Unexpected database error ProcessID $ProcessID at package $Package filename $FileName line $Line: $PgErr $PgState: $PgErrStr";
+    return 0;
 }
 
 sub DumpState {
