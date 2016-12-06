@@ -40,7 +40,6 @@ IF _ProcessID IS NULL THEN
 END IF;
 
 SELECT
-    P.RunAtTime,
     J.JobID,
     J.Enabled,
     J.Function::regprocedure,
@@ -57,7 +56,6 @@ SELECT
     J.LogTableAccess,
     CP.CycleFirstProcessID
 INTO STRICT
-    _RunAtTime,
     _JobID,
     _Enabled,
     _Function,
@@ -79,10 +77,8 @@ LEFT JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolI
 WHERE P.ProcessID = _ProcessID
 FOR UPDATE OF P;
 
-IF _RunAtTime IS NULL OR NOT _Enabled THEN
-    RETURN;
-ELSIF _RunAtTime > now() THEN
-    RunInSeconds := extract(epoch from _RunAtTime-now());
+IF _Enabled IS NOT TRUE THEN
+    RunInSeconds := NULL;
     RETURN;
 END IF;
 
