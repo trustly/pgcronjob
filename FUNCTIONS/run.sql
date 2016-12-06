@@ -20,14 +20,6 @@ _RunAfterTime        interval;
 _RunUntilTime        interval;
 _LastRunStartedAt    timestamptz;
 _LastRunFinishedAt   timestamptz;
-_seq_scan            bigint;
-_seq_tup_read        bigint;
-_idx_scan            bigint;
-_idx_tup_fetch       bigint;
-_n_tup_ins           bigint;
-_n_tup_upd           bigint;
-_n_tup_del           bigint;
-_n_tup_hot_upd       bigint;
 _SQL                 text;
 _ConnectionPoolID    integer;
 _CycleFirstProcessID integer;
@@ -119,28 +111,6 @@ UPDATE cron.Processes SET
     PgBackendPID      = pg_backend_pid()
 WHERE ProcessID = _ProcessID RETURNING LastRunStartedAt INTO STRICT _LastRunStartedAt;
 
-IF _LogTableAccess IS TRUE THEN
-    SELECT
-        COALESCE(SUM(seq_scan),0),
-        COALESCE(SUM(seq_tup_read),0),
-        COALESCE(SUM(idx_scan),0),
-        COALESCE(SUM(idx_tup_fetch),0),
-        COALESCE(SUM(n_tup_ins),0),
-        COALESCE(SUM(n_tup_upd),0),
-        COALESCE(SUM(n_tup_del),0),
-        COALESCE(SUM(n_tup_hot_upd),0)
-    INTO STRICT
-        _seq_scan,
-        _seq_tup_read,
-        _idx_scan,
-        _idx_tup_fetch,
-        _n_tup_ins,
-        _n_tup_upd,
-        _n_tup_del,
-        _n_tup_hot_upd
-    FROM pg_catalog.pg_stat_xact_user_tables;
-END IF;
-
 IF NOT _Concurrent THEN
     IF NOT pg_try_advisory_xact_lock(_Function::int, 0) THEN
         RAISE EXCEPTION 'Aborting % because of a concurrent execution', _Function;
@@ -162,28 +132,6 @@ ELSE
 END IF;
 RunInSeconds := extract(epoch from _RunAtTime-now());
 
-IF _LogTableAccess IS TRUE THEN
-    SELECT
-        COALESCE(SUM(seq_scan),0)       - _seq_scan,
-        COALESCE(SUM(seq_tup_read),0)   - _seq_tup_read,
-        COALESCE(SUM(idx_scan),0)       - _idx_scan,
-        COALESCE(SUM(idx_tup_fetch),0)  - _idx_tup_fetch,
-        COALESCE(SUM(n_tup_ins),0)      - _n_tup_ins,
-        COALESCE(SUM(n_tup_upd),0)      - _n_tup_upd,
-        COALESCE(SUM(n_tup_del),0)      - _n_tup_del,
-        COALESCE(SUM(n_tup_hot_upd),0)  - _n_tup_hot_upd
-    INTO STRICT
-        _seq_scan,
-        _seq_tup_read,
-        _idx_scan,
-        _idx_tup_fetch,
-        _n_tup_ins,
-        _n_tup_upd,
-        _n_tup_del,
-        _n_tup_hot_upd
-    FROM pg_catalog.pg_stat_xact_user_tables;
-END IF;
-
 UPDATE cron.Processes SET
     FirstRunFinishedAt = COALESCE(FirstRunFinishedAt,clock_timestamp()),
     LastRunFinishedAt  = clock_timestamp(),
@@ -196,9 +144,7 @@ INTO STRICT
     _LastRunFinishedAt;
 
 IF _LogTableAccess IS TRUE THEN
-    INSERT INTO cron.Log ( JobID, BatchJobState,    PgBackendPID,StartTxnAt,        StartedAt,        FinishedAt, seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd)
-    VALUES               (_JobID,_BatchJobState,pg_backend_pid(),     now(),_LastRunStartedAt,_LastRunFinishedAt,_seq_scan,_seq_tup_read,_idx_scan,_idx_tup_fetch,_n_tup_ins,_n_tup_upd,_n_tup_del,_n_tup_hot_upd)
-    RETURNING TRUE INTO STRICT _OK;
+    PERFORM cron.Log_Table_Access(_ProcessID, _BatchJobState, _LastRunStartedAt, _LastRunFinishedAt);
 END IF;
 
 RAISE DEBUG '% ProcessID % pg_backend_pid % : % [JobID % Function % RunInSeconds %]', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid(), _BatchJobState, _JobID, _Function, RunInSeconds;

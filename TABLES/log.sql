@@ -1,6 +1,6 @@
 CREATE TABLE cron.Log (
-LogID             serial        NOT NULL,
-JobID             integer       NOT NULL REFERENCES cron.Jobs(JobID),
+LogID             bigserial     NOT NULL,
+ProcessID         integer       NOT NULL REFERENCES cron.Processes(ProcessID),
 BatchJobState     batchjobstate,
 PgBackendPID      integer       NOT NULL,
 StartTxnAt        timestamptz   NOT NULL,

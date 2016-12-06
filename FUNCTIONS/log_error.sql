@@ -1,10 +1,10 @@
 CREATE OR REPLACE FUNCTION cron.Log_Error(_ProcessID integer, _PgBackendPID integer, _PgErr text, _PgErrStr text, _PgState text, _PerlCallerInfo text, _RetryInSeconds numeric)
-RETURNS integer
+RETURNS bigint
 LANGUAGE plpgsql
 SET search_path TO public, pg_temp
 AS $FUNC$
 DECLARE
-_ErrorLogID integer;
+_ErrorLogID bigint;
 BEGIN
 
 INSERT INTO cron.ErrorLog ( ProcessID,  PgBackendPID,  PgErr,  PgErrStr,  PgState,  PerlCallerInfo,  RetryInSeconds)

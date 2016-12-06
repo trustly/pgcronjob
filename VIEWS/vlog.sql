@@ -1,7 +1,7 @@
 CREATE OR REPLACE VIEW cron.vLog AS
 SELECT
 LogID,
-JobID,
+ProcessID,
 BatchJobState,
 PgBackendPID,
 StartTxnAt::time(0),
