@@ -17,4 +17,6 @@ n_tup_hot_upd     bigint        NOT NULL, -- n_tup_hot_upd
 PRIMARY KEY (LogID)
 );
 
+CREATE INDEX ON cron.Log(ProcessID);
+
 ALTER TABLE cron.Log OWNER TO pgcronjob;
