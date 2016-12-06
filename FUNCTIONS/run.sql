@@ -94,7 +94,7 @@ IF _RandomInterval IS TRUE THEN
 END IF;
 
 IF NOT _RunIfWaiting THEN
-    IF cron.Waiting_PIDs() IS NOT NULL THEN
+    IF EXISTS (SELECT 1 FROM pg_stat_activity_portable() WHERE waiting) THEN
         RAISE DEBUG '% ProcessID % pg_backend_pid % : other processes are waiting, aborting', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
         _RunAtTime := now() + _IntervalAGAIN;
         UPDATE cron.Processes SET RunAtTime = _RunAtTime WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;

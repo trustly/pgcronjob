@@ -19,7 +19,6 @@ CREATE SCHEMA cron;
 \ir TABLES/errorlog.sql
 \ir FUNCTIONS/log_error.sql
 \ir FUNCTIONS/log_table_access.sql
-\ir FUNCTIONS/waiting_pids.sql
 \ir FUNCTIONS/is_valid_function.sql
 \ir FUNCTIONS/register.sql
 \ir FUNCTIONS/disable.sql
