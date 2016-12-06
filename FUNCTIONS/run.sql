@@ -71,9 +71,9 @@ INTO STRICT
     _ConnectionPoolID,
     _LogTableAccess,
     _CycleFirstProcessID
-FROM cron.Jobs AS J
-INNER JOIN cron.Processes AS P ON (P.JobID = J.JobID)
-LEFT JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolID)
+FROM cron.Jobs                  AS J
+INNER JOIN cron.Processes       AS P  ON (P.JobID             = J.JobID)
+LEFT  JOIN cron.ConnectionPools AS CP ON (CP.ConnectionPoolID = J.ConnectionPoolID)
 WHERE P.ProcessID = _ProcessID
 FOR UPDATE OF P;
 
@@ -146,11 +146,13 @@ IF NOT _Concurrent THEN
         RAISE EXCEPTION 'Aborting % because of a concurrent execution', _Function;
     END IF;
 END IF;
+
 _SQL := 'SELECT '||format(replace(_Function::text,'(integer)','(%s)'),_ProcessID);
 RAISE DEBUG 'Starting cron job % process % %', _JobID, _ProcessID, _SQL;
 PERFORM set_config('application_name', regexp_replace(_SQL,'^SELECT ',''),TRUE);
 EXECUTE _SQL USING _ProcessID INTO STRICT _BatchJobState;
 RAISE DEBUG 'Finished cron job % process % % -> %', _JobID, _ProcessID, _SQL, _BatchJobState;
+
 IF _BatchJobState = 'AGAIN' THEN
     _RunAtTime := now() + _IntervalAGAIN * CASE WHEN _RandomInterval THEN random() ELSE 1 END;
 ELSIF _BatchJobState = 'DONE' THEN
