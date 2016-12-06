@@ -138,7 +138,7 @@ sub CheckErr {
 
     # For all other uncommon or unexpected database errors,
     # handle the error by dying and let us be restarted by upstart or whatever
-    die "Unexpected database error at package $Package filename $FileName line $Line: $PgErr $PgState: $PgErrStr";
+    die "Unexpected database error ProcessID $ProcessID at package $Package filename $FileName line $Line: $PgErr $PgState: $PgErrStr";
 }
 
 sub DumpState {
