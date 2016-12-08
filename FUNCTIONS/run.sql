@@ -126,7 +126,7 @@ END IF;
 
 _SQL := 'SELECT '||format(replace(_Function::text,'(integer)','(%s)'),_ProcessID);
 RAISE DEBUG 'Starting cron job % process % %', _JobID, _ProcessID, _SQL;
-PERFORM set_config('application_name', regexp_replace(_SQL,'^SELECT ',''),TRUE);
+PERFORM set_config('application_name', _Function::text,TRUE);
 EXECUTE _SQL USING _ProcessID INTO STRICT _BatchJobState;
 RAISE DEBUG 'Finished cron job % process % % -> %', _JobID, _ProcessID, _SQL, _BatchJobState;
 
