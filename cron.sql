@@ -4,7 +4,6 @@ ALTER SCHEMA cron OWNER TO pgcronjob;
 REVOKE ALL ON SCHEMA cron FROM PUBLIC;
 GRANT ALL ON SCHEMA cron TO pgcronjob;
 
-\ir FUNCTIONS/pg_stat_activity_portable.sql
 \ir TABLES/connectionpools.sql
 \ir TABLES/jobs.sql
 \ir TABLES/processes.sql

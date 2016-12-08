@@ -10,5 +10,6 @@ BEGIN;
 DROP SCHEMA cron CASCADE;
 COMMIT;
 BEGIN;
+\ir FUNCTIONS/pg_stat_activity_portable.sql
 \ir cron.sql
 COMMIT;
