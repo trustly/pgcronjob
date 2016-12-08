@@ -13,10 +13,10 @@ RunAfterTimestamp timestamptz  DEFAULT NULL,
 RunUntilTimestamp timestamptz  DEFAULT NULL,
 RunAfterTime      time         DEFAULT NULL,
 RunUntilTime      time         DEFAULT NULL,
-RequestedBy       text         NOT NULL DEFAULT session_user,
-RequestedAt       timestamptz  NOT NULL DEFAULT now(),
 ConnectionPoolID  integer      DEFAULT NULL REFERENCES cron.ConnectionPools(ConnectionPoolID),
 LogTableAccess    boolean      NOT NULL DEFAULT TRUE,
+RequestedBy       text         NOT NULL DEFAULT session_user,
+RequestedAt       timestamptz  NOT NULL DEFAULT now(),
 PRIMARY KEY (JobID)
 );
 

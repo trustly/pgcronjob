@@ -31,6 +31,7 @@ CREATE SCHEMA cron;
 \ir FUNCTIONS/new_connection_pool.sql
 \ir FUNCTIONS/reset_runattime.sql
 \ir FUNCTIONS/schedule.sql
+\ir FUNCTIONS/generate_register_commands.sql
 \ir VIEWS/vjobs.sql
 \ir VIEWS/vprocesses.sql
 \ir VIEWS/vlog.sql
