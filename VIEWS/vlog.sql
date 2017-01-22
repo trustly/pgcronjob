@@ -13,9 +13,7 @@ idx_tup_fetch,
 n_tup_ins,
 n_tup_upd,
 n_tup_del
-FROM cron.Log
-ORDER BY LogID DESC
-LIMIT 5;
+FROM cron.Log;
 
 ALTER TABLE cron.vLog OWNER TO pgcronjob;
 
