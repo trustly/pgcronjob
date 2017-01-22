@@ -10,6 +10,7 @@ LastRunStartedAt   timestamptz,
 LastRunFinishedAt  timestamptz,
 BatchJobState      batchjobstate,
 PgBackendPID       integer,
+StateData          hstore,
 PRIMARY KEY (ProcessID)
 );
 

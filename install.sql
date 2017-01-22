@@ -1,5 +1,6 @@
 ROLLBACK;
 \set AUTOCOMMIT OFF
+CREATE EXTENSION hstore;
 BEGIN;
 CREATE TYPE public.batchjobstate AS ENUM (
     'AGAIN',
