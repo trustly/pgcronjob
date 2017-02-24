@@ -62,7 +62,7 @@ my $DispatchTime = time();
 my $NumProcesses = {};
 
 sub FinishDisconnect {
-    my $ProcessID = shift;    
+    my $ProcessID = shift;
     my $Process = $Processes->{$ProcessID};
     if (!defined $Process) {
         return 1; # OK, no such process
