@@ -7,6 +7,7 @@ use DBD::Pg;
 use Time::HiRes qw(time sleep);
 use Data::Dumper;
 use DateTime;
+use IO::Select;
 
 $| = 1;
 
@@ -27,6 +28,7 @@ sub tprint {
 }
 
 my $Processes = {};
+my $Select = IO::Select->new();
 
 my $StartupTime = time();
 my $DispatchDatabaseHandle = DBI->connect(@DispatchConnect) or die "Unable to connect";
@@ -36,6 +38,7 @@ my $Reset_RunAtTime        = $DispatchDatabaseHandle->prepare('SELECT cron.Reset
 my $Dispatch               = $DispatchDatabaseHandle->prepare('SELECT RunProcessID, RunInSeconds, MaxProcesses, ConnectionPoolID, RetryOnError FROM cron.Dispatch()');
 my $Log_Error              = $DispatchDatabaseHandle->prepare('SELECT cron.Log_Error(_ProcessID := $1, _PgBackendPID := $2, _PgErr := $3, _PgErrStr := $4, _PgState := $5, _PerlCallerInfo := $6, _RetryInSeconds := $7)');
 my $Disable_Process        = $DispatchDatabaseHandle->prepare('SELECT cron.Disable_Process(_ProcessID := $1)');
+$Select->add($DispatchDatabaseHandle->{pg_socket});
 
 unless ($DispatchDatabaseHandle->{pg_user} eq 'pgcronjob') {
     die "Not connected as the 'pgcronjob' database user!";
@@ -55,6 +58,7 @@ $Reset_RunAtTime->execute();
 
 my $LISTENDatabaseHandle = DBI->connect(@LISTENConnect) or die "Unable to connect LISTEN database handle";
 $LISTENDatabaseHandle->do(qq{LISTEN "$LISTENName"}) or die "Unable to LISTEN: " . $LISTENDatabaseHandle->errstr;
+$Select->add($LISTENDatabaseHandle->{pg_socket});
 
 tprint("PgCronJob is now running");
 
@@ -79,6 +83,8 @@ sub FinishDisconnect {
     $$RunDatabaseHandle = undef;
     delete $Process->{DatabaseHandle};
     delete $Process->{PgBackendPID};
+    $Select->remove($Process->{PgSocketFD});
+    delete $Process->{PgSocketFD};
     return 1; #OK, finished and disconnected
 }
 
@@ -162,6 +168,8 @@ for (;;) {
         }
 
     }
+    my $WakeUpTime = $DispatchTime;
+    my $CurrentTime = time();
     foreach my $ProcessID (sort {$Processes->{$a}->{RunAtTime} <=> $Processes->{$b}->{RunAtTime}} keys %{$Processes}) {
         my $Process = $Processes->{$ProcessID};
         my $RunAtTime         = \$Process->{RunAtTime};
@@ -175,12 +183,17 @@ for (;;) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
         if ($$RunAtTime > 0) {
-            if ($$RunAtTime > time() || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
+            if ($$RunAtTime < $WakeUpTime) {
+                $WakeUpTime = $$RunAtTime;
+            }
+            if ($$RunAtTime > $CurrentTime || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
                 next;
             }
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@RunConnect) or die "Unable to connect";
                 $Process->{PgBackendPID} = ${$RunDatabaseHandle}->{pg_pid};
+                $Process->{PgSocketFD} = $$RunDatabaseHandle->{pg_socket};
+                $Select->add($Process->{PgSocketFD});
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
             }
             CheckErr($$Run->execute(), $ProcessID) or die "Unexpected execute error";
@@ -208,7 +221,10 @@ for (;;) {
             if (defined $RunInSeconds) {
                 # We want to actually assign a time here in order to let
                 # the main loop prioritize the tasks correctly.
-                $$RunAtTime = time() + ($$RunASAP ? 0 : $RunInSeconds);
+                $$RunAtTime = $CurrentTime + ($$RunASAP ? 0 : $RunInSeconds);
+                if ($$RunAtTime < $WakeUpTime) {
+                    $WakeUpTime = $$RunAtTime;
+                }
                 $$RunASAP = undef;
             } else {
                 delete $Processes->{$ProcessID};
@@ -227,10 +243,19 @@ for (;;) {
             next;
         }
         if ($Processes->{$ProcessID}->{RunAtTime} > 0) {
-            $Processes->{$ProcessID}->{RunAtTime} = time();
+            $Processes->{$ProcessID}->{RunAtTime} = $CurrentTime;
+            $WakeUpTime = $CurrentTime;
         } else {
             $Processes->{$ProcessID}->{RunASAP} = 1;
+            $WakeUpTime = 0;
         }
     }
-    sleep(0.001); # sleep 1 ms to avoid 100% CPU usage
+    $CurrentTime = time();
+    my $MaxSleep = $WakeUpTime - $CurrentTime;
+    if ($MaxSleep <= 0) {
+        next;
+    } elsif ($MaxSleep > 0.250) {
+        $MaxSleep = 0.250;
+    }
+    $Select->can_read($MaxSleep);
 }
