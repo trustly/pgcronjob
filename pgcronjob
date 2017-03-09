@@ -183,10 +183,14 @@ for (;;) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
         if ($$RunAtTime > 0) {
+            if (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses) {
+                # Can't run this process anywhere; don't adjust WakeUpTime
+                next;
+            }
             if ($$RunAtTime < $WakeUpTime) {
                 $WakeUpTime = $$RunAtTime;
             }
-            if ($$RunAtTime > $CurrentTime || (defined $$MaxProcesses && $$MaxProcesses ne '' && $NumProcesses->{$$ConnectionPoolID} >= $$MaxProcesses)) {
+            if ($$RunAtTime > $CurrentTime) {
                 next;
             }
             unless (defined $$RunDatabaseHandle) {
