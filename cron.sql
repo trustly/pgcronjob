@@ -24,6 +24,7 @@ GRANT ALL ON SCHEMA cron TO pgcronjob;
 \ir FUNCTIONS/reset_runattime.sql
 \ir FUNCTIONS/schedule.sql
 \ir FUNCTIONS/generate_register_commands.sql
+\ir FUNCTIONS/delete_old_log_rows.sql
 \ir VIEWS/vjobs.sql
 \ir VIEWS/vprocesses.sql
 \ir VIEWS/vlog.sql
