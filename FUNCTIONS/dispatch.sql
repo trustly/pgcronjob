@@ -37,7 +37,7 @@ WHERE P.RunAtTime IS NULL
 AND J.Enabled
 AND P.Enabled
 AND (P.BatchJobState IS DISTINCT FROM 'DONE' OR J.IntervalDONE IS NOT NULL)
-AND (J.RunUntilTimestamp > now() OR J.RunUntilTime > now()::time) IS NOT TRUE
+AND (now() > J.RunUntilTimestamp OR now()::time > J.RunUntilTime) IS NOT TRUE
 ORDER BY 2 NULLS LAST, 1
 LIMIT 1
 FOR UPDATE OF P;
