@@ -130,7 +130,10 @@ sub CheckErr {
 
     FinishDisconnect($ProcessID);
 
-    if (defined $$RetryOnError) {
+    if ($PgState eq '40P01') {
+        # deadlock detected, always retry since a deadlock is normal
+        $$RunAtTime = time() + 1;
+    } elsif (defined $$RetryOnError) {
         $$RunAtTime = time() + $$RetryOnError;
     } else {
         delete $Processes->{$ProcessID};
