@@ -10,7 +10,7 @@ SELECT TRUE FROM pg_catalog.pg_proc
 -- This is to avoid accidents and to force the user to be explicit about what to do,
 -- instead of using a plain boolean as return value, which could be misinterpreted.
 WHERE oid = $1::oid
-AND prorettype::regtype::text = 'batchjobstate'
+AND prorettype::regtype::text ~ '(^|\.)batchjobstate$'
 AND EXISTS (
     -- It's not enough to just register the function using cron.Register().
     -- The user must also explicitly grant execute on the function to the pgcronjob role,
