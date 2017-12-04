@@ -25,6 +25,7 @@ _ConnectionPoolID    integer;
 _CycleFirstProcessID integer;
 _Enabled             boolean;
 _LogTableAccess      boolean;
+_Waiting             boolean;
 BEGIN
 
 IF _ProcessID IS NULL THEN
@@ -94,7 +95,12 @@ IF _RandomInterval IS TRUE THEN
 END IF;
 
 IF NOT _RunIfWaiting THEN
-    IF EXISTS (SELECT 1 FROM pg_stat_activity_portable() WHERE waiting) THEN
+    IF current_setting('server_version_num')::int >= 90600 THEN
+        _Waiting := EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE wait_event IS NOT NULL);
+    ELSE
+        _Waiting := EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE waiting IS TRUE);
+    END IF;
+    IF _Waiting THEN
         RAISE DEBUG '% ProcessID % pg_backend_pid % : other processes are waiting, aborting', clock_timestamp()::timestamp(3), _ProcessID, pg_backend_pid();
         _RunAtTime := now() + _IntervalAGAIN;
         UPDATE cron.Processes SET RunAtTime = _RunAtTime WHERE ProcessID = _ProcessID RETURNING TRUE INTO STRICT _OK;
