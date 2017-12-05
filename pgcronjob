@@ -22,6 +22,9 @@ sub tprint {
 }
 
 my $Processes = {};
+my $Connections = {};
+my $ConnectionID = 0; # Sequence, starts at 1
+my $ConnectionPools = {};
 my $Select = IO::Select->new();
 
 my $StartupTime = time();
@@ -65,17 +68,17 @@ sub FinishDisconnect {
     if (!defined $Process) {
         return 1; # OK, no such process
     }
-    if (!defined $Process->{DatabaseHandle}) {
+    if (!defined $Process->{ConnectionID}) {
         return 1; # OK, no such database handle
     }
-    my $Run               = \$Process->{Run};
-    $$Run->finish;
-    $$Run = undef;
+    $Connections->{$Process->{ConnectionID}}->{PreparedQuery}->finish;
+    $Connections->{$Process->{ConnectionID}}->{PreparedQuery} = undef;
     delete $Process->{Run};
-    $Select->remove($Process->{DatabaseHandle}->{pg_socket});
-    $Process->{DatabaseHandle}->disconnect;
-    $Process->{DatabaseHandle} = undef;
-    delete $Process->{DatabaseHandle};
+    $Select->remove($Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->{pg_socket});
+    $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->disconnect;
+    $Connections->{$Process->{ConnectionID}}->{DatabaseHandle} = undef;
+    delete $Connections->{$Process->{ConnectionID}}->{DatabaseHandle};
+    delete $Process->{ConnectionID};
     return 1; #OK, finished and disconnected
 }
 
@@ -89,7 +92,7 @@ sub CheckErr {
     }
 
     my $Process = $Processes->{$ProcessID};
-    if (!defined $Process || !defined $Process->{DatabaseHandle}) {
+    if (!defined $Process || !defined $Process->{ConnectionID}) {
         return 0; # error, no such process or database handle
     }
 
@@ -97,20 +100,20 @@ sub CheckErr {
     my $RunAtTime         = \$Process->{RunAtTime};
     my $RetryOnError      = \$Process->{RetryOnError};
 
-    if (!defined($Process->{DatabaseHandle}->err) || $Process->{DatabaseHandle}->err == 0) {
+    if (!defined($Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->err) || $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->err == 0) {
         # OK since it was not a database error,
         # so the non-true $ReturnValue must have been
         # due to no rows returned or some other non-error situation
         return 1;
     }
 
-    my $PgState = $Process->{DatabaseHandle}->state;
+    my $PgState = $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->state;
 
     $Log_Error->execute(
         $ProcessID,
-        $Process->{DatabaseHandle}->{pg_pid},
-        $Process->{DatabaseHandle}->err,
-        $Process->{DatabaseHandle}->errstr,
+        $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->{pg_pid},
+        $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->err,
+        $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->errstr,
         $PgState,
         "$FileName line $Line",
         $$RetryOnError
@@ -168,7 +171,6 @@ for (;;) {
         my $MaxProcesses      = \$Process->{MaxProcesses};
         my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
         my $RetryOnError      = \$Process->{RetryOnError};
-        my $Run               = \$Process->{Run};
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
         }
@@ -183,32 +185,50 @@ for (;;) {
             if ($$RunAtTime > $CurrentTime) {
                 next;
             }
-            unless (defined $Process->{DatabaseHandle}) {
-                $Process->{DatabaseHandle} = DBI->connect(@RunConnect) or die "Unable to connect";
-                $Select->add($Process->{DatabaseHandle}->{pg_socket});
-                $$Run = $Process->{DatabaseHandle}->prepare('SELECT RunInSeconds FROM cron.Run(_ProcessID := $1)', {pg_async => PG_ASYNC}) or die "Unable to prepare";
+            if (defined $$ConnectionPoolID) {
+                if (!defined $ConnectionPools->{$$ConnectionPoolID}) {
+                    $ConnectionPools->{$$ConnectionPoolID} = [];
+                }
+                $Process->{ConnectionID} = pop @{$ConnectionPools->{$$ConnectionPoolID}};
+                if (defined ($Process->{ConnectionID})) {
+                    $Select->add($Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->{pg_socket});
+                }
             }
-            CheckErr($$Run->execute($ProcessID), $ProcessID) or die "Unexpected execute error";
+            unless (defined $Process->{ConnectionID}) {
+                $ConnectionID++;
+                $Process->{ConnectionID} = $ConnectionID;
+                $Connections->{$ConnectionID}->{DatabaseHandle} = DBI->connect(@RunConnect) or die "Unable to connect";
+                $Select->add($Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->{pg_socket});
+                $Connections->{$Process->{ConnectionID}}->{PreparedQuery} = $Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->prepare('SELECT RunInSeconds FROM cron.Run(_ProcessID := $1)', {pg_async => PG_ASYNC}) or die "Unable to prepare";
+            }
+            CheckErr($Connections->{$Process->{ConnectionID}}->{PreparedQuery}->execute($ProcessID), $ProcessID) or die "Unexpected execute error";
             $$RunAtTime = 0;
             if (defined $$ConnectionPoolID) {
                 $NumProcesses->{$$ConnectionPoolID}++;
             }
-        } elsif ($$Run->pg_ready) {
+        } elsif ($Connections->{$Process->{ConnectionID}}->{PreparedQuery}->pg_ready) {
             if (defined $$ConnectionPoolID) {
                 $NumProcesses->{$$ConnectionPoolID}--;
             }
-            my $Rows = $$Run->pg_result;
+            my $Rows = $Connections->{$Process->{ConnectionID}}->{PreparedQuery}->pg_result;
             CheckErr($Rows, $ProcessID) or next;
             if ($Rows > 1) {
                 die "Unexpected numbers of rows: $Rows";
             }
-            my ($RunInSeconds) = $$Run->fetchrow_array();
+            my ($RunInSeconds) = $Connections->{$Process->{ConnectionID}}->{PreparedQuery}->fetchrow_array();
             CheckErr($RunInSeconds, $ProcessID) or next;
-            if ($$Run->fetchrow_array()) {
+            if ($Connections->{$Process->{ConnectionID}}->{PreparedQuery}->fetchrow_array()) {
                 die "Unexpected extra row returned";
             }
-            if (!defined $RunInSeconds || $RunInSeconds > $ConnectTime) {
+            if (defined $$ConnectionPoolID) {
+                $Connections->{$Process->{ConnectionID}}->{PreparedQuery}->finish;
+                $Select->remove($Connections->{$Process->{ConnectionID}}->{DatabaseHandle}->{pg_socket});
+                push @{$ConnectionPools->{$$ConnectionPoolID}}, $Process->{ConnectionID};
+                delete $Process->{ConnectionID};
+            } elsif (!defined $RunInSeconds || $RunInSeconds > $ConnectTime) {
                 FinishDisconnect($ProcessID);
+            } else {
+                # Keeping connection open since we should run again soon
             }
             if (defined $RunInSeconds) {
                 # We want to actually assign a time here in order to let
