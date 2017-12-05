@@ -82,7 +82,6 @@ sub FinishDisconnect {
     $$RunDatabaseHandle->disconnect;
     $$RunDatabaseHandle = undef;
     delete $Process->{DatabaseHandle};
-    delete $Process->{PgBackendPID};
     $Select->remove($Process->{PgSocketFD});
     delete $Process->{PgSocketFD};
     return 1; #OK, finished and disconnected
@@ -198,7 +197,6 @@ for (;;) {
             }
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@RunConnect) or die "Unable to connect";
-                $Process->{PgBackendPID} = ${$RunDatabaseHandle}->{pg_pid};
                 $Process->{PgSocketFD} = $$RunDatabaseHandle->{pg_socket};
                 $Select->add($Process->{PgSocketFD});
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
