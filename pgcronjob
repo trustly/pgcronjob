@@ -74,16 +74,14 @@ sub FinishDisconnect {
     if (!defined $Process->{DatabaseHandle}) {
         return 1; # OK, no such database handle
     }
-    my $RunDatabaseHandle = \$Process->{DatabaseHandle};
     my $Run               = \$Process->{Run};
     $$Run->finish;
     $$Run = undef;
     delete $Process->{Run};
-    $$RunDatabaseHandle->disconnect;
-    $$RunDatabaseHandle = undef;
+    $Select->remove($Process->{DatabaseHandle}->{pg_socket});
+    $Process->{DatabaseHandle}->disconnect;
+    $Process->{DatabaseHandle} = undef;
     delete $Process->{DatabaseHandle};
-    $Select->remove($Process->{PgSocketFD});
-    delete $Process->{PgSocketFD};
     return 1; #OK, finished and disconnected
 }
 
@@ -197,8 +195,7 @@ for (;;) {
             }
             unless (defined $$RunDatabaseHandle) {
                 $$RunDatabaseHandle = DBI->connect(@RunConnect) or die "Unable to connect";
-                $Process->{PgSocketFD} = $$RunDatabaseHandle->{pg_socket};
-                $Select->add($Process->{PgSocketFD});
+                $Select->add($$RunDatabaseHandle->{pg_socket});
                 $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
             }
             CheckErr($$Run->execute(), $ProcessID) or die "Unexpected execute error";
