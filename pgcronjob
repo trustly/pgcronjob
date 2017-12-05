@@ -16,12 +16,6 @@ my @RunConnect      = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'requ
 my @LISTENConnect   = ("dbi:Pg:", '', '', {pg_enable_utf8 => 1, sslmode => 'require', RaiseError => 1, PrintError => 0, AutoCommit => 1});
 my $LISTENName = 'cron.Dispatch()';
 
-sub SQL_Run {
-    my $ProcessID = shift;
-    die "Invalid ProcessID: $ProcessID" unless $ProcessID =~ m/^\d+$/;
-    return "SELECT RunInSeconds FROM cron.Run(_ProcessID := $ProcessID)";
-}
-
 sub tprint {
     my $msg = shift;
     print DateTime->now(time_zone => 'local')->datetime() . ' ' . $msg . "\n";
@@ -192,9 +186,9 @@ for (;;) {
             unless (defined $Process->{DatabaseHandle}) {
                 $Process->{DatabaseHandle} = DBI->connect(@RunConnect) or die "Unable to connect";
                 $Select->add($Process->{DatabaseHandle}->{pg_socket});
-                $$Run = $Process->{DatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
+                $$Run = $Process->{DatabaseHandle}->prepare('SELECT RunInSeconds FROM cron.Run(_ProcessID := $1)', {pg_async => PG_ASYNC}) or die "Unable to prepare";
             }
-            CheckErr($$Run->execute(), $ProcessID) or die "Unexpected execute error";
+            CheckErr($$Run->execute($ProcessID), $ProcessID) or die "Unexpected execute error";
             $$RunAtTime = 0;
             if (defined $$ConnectionPoolID) {
                 $NumProcesses->{$$ConnectionPoolID}++;
