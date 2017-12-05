@@ -99,27 +99,24 @@ sub CheckErr {
         return 0; # error, no such process or database handle
     }
 
-    my $RunDatabaseHandle = \$Process->{DatabaseHandle};
     my $Run               = \$Process->{Run};
     my $RunAtTime         = \$Process->{RunAtTime};
     my $RetryOnError      = \$Process->{RetryOnError};
 
-    if (!defined($$RunDatabaseHandle->err) || $$RunDatabaseHandle->err == 0) {
+    if (!defined($Process->{DatabaseHandle}->err) || $Process->{DatabaseHandle}->err == 0) {
         # OK since it was not a database error,
         # so the non-true $ReturnValue must have been
         # due to no rows returned or some other non-error situation
         return 1;
     }
 
-    my $PgErr    = $Process->{DatabaseHandle}->err;
-    my $PgErrStr = $Process->{DatabaseHandle}->errstr;
-    my $PgState  = $Process->{DatabaseHandle}->state;
+    my $PgState = $Process->{DatabaseHandle}->state;
 
     $Log_Error->execute(
         $ProcessID,
         $Process->{DatabaseHandle}->{pg_pid},
-        $PgErr,
-        $PgErrStr,
+        $Process->{DatabaseHandle}->err,
+        $Process->{DatabaseHandle}->errstr,
         $PgState,
         "$FileName line $Line",
         $$RetryOnError
@@ -177,7 +174,6 @@ for (;;) {
         my $MaxProcesses      = \$Process->{MaxProcesses};
         my $ConnectionPoolID  = \$Process->{ConnectionPoolID};
         my $RetryOnError      = \$Process->{RetryOnError};
-        my $RunDatabaseHandle = \$Process->{DatabaseHandle};
         my $Run               = \$Process->{Run};
         if (defined $$ConnectionPoolID && !defined $NumProcesses->{$$ConnectionPoolID}) {
             $NumProcesses->{$$ConnectionPoolID} = 0;
@@ -193,10 +189,10 @@ for (;;) {
             if ($$RunAtTime > $CurrentTime) {
                 next;
             }
-            unless (defined $$RunDatabaseHandle) {
-                $$RunDatabaseHandle = DBI->connect(@RunConnect) or die "Unable to connect";
-                $Select->add($$RunDatabaseHandle->{pg_socket});
-                $$Run = ${$RunDatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
+            unless (defined $Process->{DatabaseHandle}) {
+                $Process->{DatabaseHandle} = DBI->connect(@RunConnect) or die "Unable to connect";
+                $Select->add($Process->{DatabaseHandle}->{pg_socket});
+                $$Run = $Process->{DatabaseHandle}->prepare(SQL_Run($ProcessID), {pg_async => PG_ASYNC}) or die "Unable to prepare";
             }
             CheckErr($$Run->execute(), $ProcessID) or die "Unexpected execute error";
             $$RunAtTime = 0;
