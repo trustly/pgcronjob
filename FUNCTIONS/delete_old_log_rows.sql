@@ -42,10 +42,6 @@ RETURN 'DONE';
 END;
 $_$;
 
-ALTER FUNCTION cron.Delete_Old_Log_Rows(_ProcessID integer) OWNER TO gluepay;
-
-REVOKE ALL ON FUNCTION cron.Delete_Old_Log_Rows(_ProcessID integer) FROM PUBLIC;
-GRANT  ALL ON FUNCTION cron.Delete_Old_Log_Rows(_ProcessID integer) TO gluepay;
 GRANT  ALL ON FUNCTION cron.Delete_Old_Log_Rows(_ProcessID integer) TO pgcronjob;
 
 /*
